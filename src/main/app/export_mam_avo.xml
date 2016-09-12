@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:mulerequester="http://www.mulesoft.org/schema/mule/mulerequester" xmlns:ftp="http://www.mulesoft.org/schema/mule/ee/ftp" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:mulexml="http://www.mulesoft.org/schema/mule/xml" xmlns:context="http://www.springframework.org/schema/context" xmlns:amqps="http://www.mulesoft.org/schema/mule/amqps" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:anypoint-mq="http://www.mulesoft.org/schema/mule/anypoint-mq" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/anypoint-mq http://www.mulesoft.org/schema/mule/anypoint-mq/current/mule-anypoint-mq.xsd
+http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
+http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-current.xsd
+http://www.mulesoft.org/schema/mule/amqps http://www.mulesoft.org/schema/mule/amqps/current/mule-amqps.xsd
+http://www.mulesoft.org/schema/mule/xml http://www.mulesoft.org/schema/mule/xml/current/mule-xml.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/ee/ftp http://www.mulesoft.org/schema/mule/ee/ftp/current/mule-ftp-ee.xsd
+http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema/mule/mulerequester/current/mule-mulerequester.xsd">
+    <amqp:connector name="RabbitMQConnector" validateConnections="true" doc:name="AMQP-0-9 Connector" host="${rabbit.host}" password="${rabbit.password}" port="${rabbit.port}" username="${rabbit.username}"  prefetchCount="1" numberOfChannels="1" ackMode="MANUAL"> 
+        <reconnect-forever></reconnect-forever>  
+    </amqp:connector>
+    <context:property-placeholder location="${mule.env}.properties"/>
+    <http:request-config name="PID_webservice" host="do-tst-mvn-01.do.viaa.be" port="8080" basePath="/" doc:name="HTTP Request Configuration"/>
+    <http:request-config name="HTTP_Request_Configuration" protocol="HTTPS" host="archief-qas.viaa.be" port="443" basePath="/mediahaven-oai" doc:name="HTTP Request Configuration" responseTimeout="30000"/>
+    <ftp:connector name="FTP" pollingFrequency="1000" validateConnections="true" doc:name="FTP"/>
+    <http:request-config name="elastic_search" host="${elastic.host}" port="${elastic.port}" basePath="/" doc:name="HTTP Request Configuration"/>
+    <mulerequester:config name="Mule_Requester" doc:name="Mule Requester"/>
+    <flow name="export_mam_avoFlow">
+        <amqp:inbound-endpoint responseTimeout="10000" exchange-pattern="request-response" connector-ref="RabbitMQConnector" doc:name="RabbitMQ" queueName="avo_export_requests"/>
+        <byte-array-to-string-transformer doc:name="Byte Array to String"/>
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+        <set-variable variableName="filename" value="#[payload.sip_package[0].file_name]" doc:name="Set filename"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:input-payload doc:sample="sample_data\json.json"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%input payload application/java
+%output application/json
+---
+{
+	"cpName": payload.cp_name,
+	"flowId": payload.flow_id,
+	"server": payload.server,
+	"username": payload.username,
+	"password": payload.password,
+	"timestamp": payload.timestamp,
+	"file_path": payload.sip_package[0].file_path,
+	"file_name": payload.sip_package[0].file_name
+} as :object {class:"be.viaa.request.AvoRequest"}]]></dw:set-payload>
+        </dw:transform-message>
+        <set-variable doc:name="Set request" value="#[payload]" variableName="request "/>
+        <set-variable variableName="files" value="#[payload.sipPackage]" doc:name="Set files"/>
+        <flow-ref name="get_pid" doc:name="get_pid"/>
+        <flow-ref name="get_metadata_ftp" doc:name="get_metadata_ftp"/>
+        <flow-ref name="generate_metadata" doc:name="generate_metadata"/>
+        <flow-ref name="export_mam_avoFlow" doc:name="export_mam_avoFlow"/>
+        <amqps:acknowledge-message doc:name="AMQPS-0-9 Acknowledge Message"/>
+    </flow>
+    <sub-flow name="log_elastic_search">
+        <dw:transform-message doc:name="Create message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+{
+	"state": flowVars.state,
+	"timestamp":  now as :datetime {format: "yyyy-MM-dd'T'HH:mm:ss.SSSZ"},
+	"tennant": "placeholder",
+	"briefing_id": "placeholder"
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <logger message="#[payload]" level="INFO" doc:name="Debug message"/>
+        <http:request config-ref="elastic_search" path="${elastic.path}" method="POST" doc:name="POST Status"/>
+    </sub-flow>
+    <sub-flow name="get_metadata_ftp">
+        <mulerequester:request config-ref="Mule_Requester" resource="ftp://#[flowVars.request.username]:#[flowVars.request.password]@#[flowVars.request.server]/#[flowVars.files[1].file_path]/#[flowVars.files[1].file_name]?connector=FTP" doc:name="Mule Requester"/>
+        <byte-array-to-object-transformer doc:name="Byte Array to Object"/>
+        <set-variable variableName="pid" value="#[payload.filename.substring(0, payload.filename.indexOf(&quot;.&quot;) - 1)]" doc:name="Set pid"/>
+        <dw:transform-message doc:name="Extract MediaHAVEN_external_metadata">
+            <dw:set-payload><![CDATA[%dw 1.0
+%input payload application/xml
+%output application/xml
+---
+{
+    MediaHAVEN_external_metadata: payload.mets.dmdSec.mdWrap.xmlData.MediaHAVEN_external_metadata    
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
+        <set-variable variableName="metadata" value="#[payload]" doc:name="Set metadata"/>
+        <set-variable variableName="state" value="MD OBTAINED" doc:name="Set state"/>
+        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <logger message="MD OBTAINED" level="INFO" doc:name="MD OBTAINED"/>
+    </sub-flow>
+    <sub-flow name="get_metadata">
+        <http:request config-ref="HTTP_Request_Configuration" path="/oai?verb=GetRecord&amp;metadataPrefix=mets&amp;identifier=noid:#[flowVars.pid]" method="GET" doc:name="Request metadata">
+            <http:request-builder>
+                <http:header headerName="Authorization" value="${oai_authorization}"/>
+            </http:request-builder>
+        </http:request>
+        <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
+
+        <set-variable variableName="state" value="#[&quot;MD_OBTAINED&quot;]" doc:name="Set state"/>
+        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <logger message="MD OBTAINED" level="INFO" doc:name="MD OBTAINED"/>
+    </sub-flow>
+    <sub-flow name="get_pid">
+        <http:request config-ref="PID_webservice" path="${pid.path}" method="GET" doc:name="Request pid"/>
+        <json:json-to-object-transformer returnClass="be.viaa.response.PIDIdResponse[]" doc:name="Get generated pid"/>
+        <set-variable variableName="generated_pid" value="#[payload[0].id]" doc:name="Set generated_pid"/>
+        <set-variable variableName="state" value="#[&quot;PID_OBTAINED&quot;]" doc:name="Set state"/>
+        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <logger message="PID OBTAINED" level="INFO" doc:name="PID OBTAINED"/>
+    </sub-flow>
+    <sub-flow name="modify_original_metadata">
+        <dw:transform-message metadata:id="0118c471-3028-463b-a667-7e79cd43bf6a" doc:name="Transform Metadata">
+            <dw:input-payload/>
+            <dw:input-variable variableName="metadata_no_root"/>
+            <dw:input-variable variableName="generated_pid"/>
+            <dw:input-variable doc:sample="sample_data\empty_2.xml" variableName="pid"/>
+            <dw:input-variable doc:sample="sample_data\empty_1.xml" variableName="metadata"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/xml
+---
+{
+	//test: ((payload.MediaHAVEN_external_metadata as :array) as :object)[0]
+	MediaHAVEN_external_metadata:  {
+		(((flowVars.metadata.MediaHAVEN_external_metadata as :array) as :object) map (
+			($ as :object) when $ != flowVars.metadata.MediaHAVEN_external_metadata.MDProperties 
+			otherwise
+			{}
+		)),
+		
+		"MDProperties": {
+			
+			(((flowVars.metadata.MediaHAVEN_external_metadata.MDProperties as :array) as :object) map (
+				$
+			))
+//			"dc_relations" @(type: "list"): {
+//				is_verwant_aan: flowVars.generated_pid
+//			}
+		}
+	}
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <ftp:outbound-endpoint host="${ftp.host}" port="21" responseTimeout="10000" doc:name="Export modified XML" password="${ftp.password}" path="/" user="${ftp.username}" outputPattern="#[flowVars.pid + &quot;.xml&quot;]"/>
+        <set-variable variableName="state" value="#[&quot;ORIGINAL_UPDATED&quot;]" doc:name="Set state"/>
+        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <logger message="ORIGINAL UPDATED" level="INFO" doc:name="ORIGINAL UPDATED"/>
+    </sub-flow>
+    <sub-flow name="generate_metadata">
+        <dw:transform-message metadata:id="0118c471-3028-463b-a667-7e79cd43bf6a" doc:name="Create new metadata">
+            <dw:input-payload />
+            <dw:input-variable variableName="metadata_no_root"/>
+            <dw:input-variable variableName="generated_pid"/>
+            <dw:input-variable doc:sample="sample_data\empty_2.xml" variableName="pid"/>
+            <dw:input-variable doc:sample="sample_data\empty_1.xml" variableName="metadata"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/xml
+---
+{
+	//test: ((payload.MediaHAVEN_external_metadata as :array) as :object)[0]
+	MediaHAVEN_external_metadata:  {
+		(((flowVars.metadata.MediaHAVEN_external_metadata as :array) as :object) map (
+			($ as :object) when $ != flowVars.metadata.MediaHAVEN_external_metadata.MDProperties 
+			otherwise
+			{}
+		)),
+		
+		"MDProperties": {
+			
+			(((flowVars.metadata.MediaHAVEN_external_metadata.MDProperties as :array) as :object) map (
+				($ as :object) when $ != flowVars.metadata.MediaHAVEN_external_metadata.MDProperties.PID
+				otherwise
+				{
+					"PID": flowVars.generated_pid
+				}
+			)),
+			"original_pid": flowVars.metadata.MediaHAVEN_external_metadata.MDProperties.PID,
+			"dc_relations" @(type: "list"): {
+				is_verwant_aan: flowVars.pid
+			}
+		}
+	}
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
+        <set-variable variableName="state" value="#[&quot;METADATA_MAPPED&quot;]" doc:name="Set state"/>
+        <flow-ref name="modify_original_metadata" doc:name="modify_original_metadata"/>
+
+        <logger message="METADATA MAPPED" level="INFO" doc:name="METADATA MAPPED"/>
+    </sub-flow>
+    <sub-flow name="export_files">
+        <ftp:outbound-endpoint host="#[flowVars.request.host]" port="21" responseTimeout="10000" doc:name="Export generated XML" password="#[flowVars.request.password]" path="#[flowVars.request.path + &quot;/&quot;]" user="#[flowVars.request.username]" connector-ref="FTP" outputPattern=" #[flowVars.pid + &quot;.xml&quot;]"/>
+        <dw:transform-message doc:name="Create FXP Request">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	source_host: flowVars.request.server,
+	source_path: flowVars.request.sipPackage[0].filePath,
+	source_filename: flowVars.filename + ".mp4",
+	source_username: flowVars.request.username,
+	source_password: flowVars.request.password,
+	
+	destination_host: p('destination.host'),
+	destination_path: p('destination.path'),
+	destination_filename: flowVars.filename + ".mp4",
+	destination_username: p('destination.username'),
+	destination_password: p('destination.password'),
+	
+	move: false
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <byte-array-to-string-transformer doc:name="Byte Array to String"/>
+
+        <amqp:outbound-endpoint queueName="fxp_requests" responseTimeout="10000" exchange-pattern="request-response" connector-ref="RabbitMQConnector" doc:name="Message on FXP Queue"/>
+        <logger message="TODO: sidecar delete" level="INFO" doc:name="Delete"/>
+        <set-variable variableName="state" value="#[&quot;DELIVERED&quot;]" doc:name="Set state"/>
+        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <logger message="DELIVERED" level="INFO" doc:name="DELIVERED"/>
+    </sub-flow>
+</mule>

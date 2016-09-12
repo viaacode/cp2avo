@@ -1,0 +1,23 @@
+# Rabbit MQ configuration
+rabbit.host=
+rabbit.port=
+rabbit.username=
+rabbit.password=
+rabbit.queuename=
+rabbit.movequeue=
+
+# OAI Authorization
+oai_authorization=
+
+# PID configuration
+pid.path=
+
+# FTP configuration voor metadata
+ftp.host=
+ftp.username=
+ftp.password=
+
+# Elasticsearch
+elastic.host=
+elastic.port=
+elastic.path=
