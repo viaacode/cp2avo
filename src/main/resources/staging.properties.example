@@ -6,16 +6,16 @@ rabbit.password=
 rabbit.queuename=
 rabbit.movequeue=
 
-# OAI Authorization
-oai_authorization=
-
 # PID configuration
+pid.host=
+pid.port=
 pid.path=
 
-# FTP configuration voor metadata
-ftp.host=
-ftp.username=
-ftp.password=
+# FTP configuration voor sidecar ingest
+ftpDestination.host=
+ftpDestination.username=
+ftpDestination.password=
+ftpDestination.path=
 
 # Elasticsearch
 elastic.host=
