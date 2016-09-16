@@ -60,6 +60,9 @@ http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema
         <set-variable variableName="original_metadata" value="#[payload]" doc:name="Set original_metadata with MHEM"/>
         <set-variable variableName="original_pid" value="#[xpath3('//PID/text()')]" doc:name="Set original_pid"/>
         <set-variable variableName="original_cp" value="#[xpath3('//CP/text()')]" doc:name="Set original_cp"/>
+        <set-variable variableName="original_md5" value="#[xpath3('//md5/text()')]" doc:name="Set original_md5"/>
+        <set-variable variableName="original_cp_id" value="#[xpath3('//CP_id/text()')]" doc:name="Set original_cp_id"/>
+        <set-variable variableName="original_ingestspacename" value="#[xpath3('//ingestspacename/text()')]" doc:name="Set original_ingestspacename"/>
         <set-variable variableName="briefing_ids" value="#[xpath3(&quot;/string-join(//BriefingID[not(@type='list')]/text(), ' ')&quot;)]" doc:name="Set briefing_ids as text field for logging"/>
         <set-variable variableName="briefing_ids " value="#[flowVars.briefing_ids.replaceAll(&quot;\n&quot;,&quot;&quot;).trim().replaceAll(&quot;        &quot;,&quot; &quot;)]" doc:name="Rewrite briefing_ids without leading and trailing whitespace"/>
         <set-variable variableName="state" value="MD_OBTAINED" doc:name="Set state (MD_OBTAINED)"/>
@@ -95,21 +98,8 @@ http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema
 			($) when $ != payload.MediaHAVEN_external_metadata.MDProperties otherwise {}
 		)),
 		"MDProperties": {
-			(((payload.MediaHAVEN_external_metadata.*MDProperties as :array) as :object) map (
-				// Overwrite PID with new PID
-				((($) when $ != payload.MediaHAVEN_external_metadata.MDProperties.PID
-				otherwise
-				{
-					"PID": flowVars.new_pid
-				}) when $ != payload.MediaHAVEN_external_metadata.MDProperties.CP
-				otherwise
-				{
-					"CP": "testbeeld"
-				}) when $ != payload.MediaHAVEN_external_metadata.MDProperties.md5
-				otherwise
-				{
-					// delete original MD5 because is now probably a partial
-				}
+			(payload.MediaHAVEN_external_metadata.*MDProperties map (
+				$
 			)),
 			// Original CP
 			Original_CP: flowVars.original_cp,
@@ -122,7 +112,7 @@ http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema
 }]]></dw:set-payload>
         </dw:transform-message>
         <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
-        <set-variable variableName="new_metadata" value="#[payload]" doc:name="Set new_metadata"/>
+        <set-variable variableName="new_metadata" value="#[payload.replaceAll('&lt;PID&gt;'+flowVars.original_pid+'&lt;/PID&gt;', '&lt;PID&gt;'+flowVars.new_pid+'&lt;/PID&gt;').replaceAll('&lt;CP&gt;'+flowVars.original_cp+'&lt;/CP&gt;', '&lt;CP&gt;testbeeld&lt;/CP&gt;').replaceAll('&lt;CP_id&gt;'+flowVars.original_cp_id+'&lt;/CP_id&gt;', '&lt;CP_id&gt;OR-h41jm1d&lt;/CP_id&gt;').replaceAll('&lt;md5&gt;'+flowVars.original_md5+'&lt;/md5&gt;', '').replaceAll('&lt;ingestspacename&gt;'+flowVars.original_ingestspacename+'&lt;/ingestspacename&gt;', '').replaceAll('    \n', '')]" doc:name="Set new_metadata by replacing PID, CP and CP_id and deleting MD5 and ingestspacename"/>
         <set-variable variableName="state" value="#[&quot;METADATA_MAPPED&quot;]" doc:name="Set state (METADATA_MAPPED)"/>
         <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
 
