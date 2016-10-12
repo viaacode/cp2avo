@@ -13,7 +13,7 @@ http://www.springframework.org/schema/context http://www.springframework.org/sch
 http://www.mulesoft.org/schema/mule/xml http://www.mulesoft.org/schema/mule/xml/current/mule-xml.xsd
 http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
 http://www.mulesoft.org/schema/mule/ee/ftp http://www.mulesoft.org/schema/mule/ee/ftp/current/mule-ftp-ee.xsd
-http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema/mule/mulerequester/current/mule-mulerequester.xsd">
+http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema/mule/mulerequester/current/mule-mulerequester.xsd"> 
     <context:property-placeholder location="${mule.env}.properties"/>
     <http:request-config name="PID_webservice" host="${pid.host}" port="${pid.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="30000"/>
     <ftp:connector streaming="true" name="FTP" pollingFrequency="1000" validateConnections="true" doc:name="FTP"></ftp:connector>
@@ -103,6 +103,8 @@ http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema
 			)),
 			// Original CP
 			Original_CP: flowVars.original_cp,
+			// Original CP ID
+			Original_CP_id: p('vrt.ldap_id'),
 			// Add relation to original PID
 			"dc_relations" @(type: "list"): {
 				is_verwant_aan: flowVars.original_pid

@@ -21,3 +21,5 @@ ftpDestination.path=
 elastic.host=
 elastic.port=
 elastic.path=
+
+vrt.ldap_id=
