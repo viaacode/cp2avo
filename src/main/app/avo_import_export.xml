@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:mulerequester="http://www.mulesoft.org/schema/mule/mulerequester" xmlns:ftp="http://www.mulesoft.org/schema/mule/ee/ftp" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:mulexml="http://www.mulesoft.org/schema/mule/xml" xmlns:context="http://www.springframework.org/schema/context" xmlns:amqps="http://www.mulesoft.org/schema/mule/amqps" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:anypoint-mq="http://www.mulesoft.org/schema/mule/anypoint-mq" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+<mule xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:mulerequester="http://www.mulesoft.org/schema/mule/mulerequester" xmlns:ftp="http://www.mulesoft.org/schema/mule/ee/ftp" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:mulexml="http://www.mulesoft.org/schema/mule/xml" xmlns:context="http://www.springframework.org/schema/context" xmlns:amqps="http://www.mulesoft.org/schema/mule/amqps" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:anypoint-mq="http://www.mulesoft.org/schema/mule/anypoint-mq" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
 	xmlns:spring="http://www.springframework.org/schema/beans" 
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
@@ -13,13 +13,18 @@ http://www.springframework.org/schema/context http://www.springframework.org/sch
 http://www.mulesoft.org/schema/mule/xml http://www.mulesoft.org/schema/mule/xml/current/mule-xml.xsd
 http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
 http://www.mulesoft.org/schema/mule/ee/ftp http://www.mulesoft.org/schema/mule/ee/ftp/current/mule-ftp-ee.xsd
-http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema/mule/mulerequester/current/mule-mulerequester.xsd"> 
+http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema/mule/mulerequester/current/mule-mulerequester.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd"> 
     <context:property-placeholder location="${mule.env}.properties"/>
     <http:request-config name="PID_webservice" host="${pid.host}" port="${pid.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="30000"/>
     <ftp:connector streaming="true" name="FTP" pollingFrequency="1000" validateConnections="true" doc:name="FTP"></ftp:connector>
 <!--     <ftp:connector name="FTP"  validateConnections="true" doc:name="FTP" connectionTimeout="10000"/> -->
     <http:request-config name="elastic_search" host="${elastic.host}" port="${elastic.port}" basePath="${elastic.path}" doc:name="HTTP Request Configuration" responseTimeout="30000" usePersistentConnections="false"/>
-    <mulerequester:config name="Mule_Requester" doc:name="Mule Requester"/>
+    <!-- DATABASE -->
+    <db:generic-config name="POSTGRESQL_Connection" url="jdbc:postgresql://${db.host}:${db.port}/${db.database}?password=${db.password}&amp;user=${db.username}" driverClassName="org.postgresql.Driver" doc:name="Generic Database Configuration"> 
+        <reconnect frequency="5000" count="25"></reconnect>  
+    </db:generic-config>
     <amqp:connector name="AMQP_0_9_Connector" validateConnections="true" host="${rabbit.host}" username="${rabbit.username}" password="${rabbit.password}" ackMode="MANUAL" prefetchCount="1" numberOfChannels="1" doc:name="AMQP-0-9 Connector">
         <reconnect/>
     </amqp:connector>
@@ -37,17 +42,32 @@ http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema
         <amqp:acknowledge-message doc:name="AMQP-0-9 Acknowledge Message"/>
     </flow>
     <sub-flow name="init_variables">
+        <set-variable variableName="originalfilename" value="#[payload.sip_package[0].file_name]" doc:name="set originalfilename"/>
+        <flow-ref name="parse_filename" doc:name="parse_filename"/>
         <set-variable variableName="filename" value="#[payload.sip_package[0].file_name.substring(0, payload.sip_package[0].file_name.lastIndexOf('.'))]" doc:name="Set filename without extension"/>
         <set-variable variableName="filepath" value="#[payload.sip_package[0].file_path]" doc:name="Set filepath"/>
         <set-variable variableName="host" value="#[payload.server]" doc:name="Set host"/>
         <set-variable variableName="username" value="#[payload.username]" doc:name="Set username"/>
         <set-variable variableName="password" value="#[payload.password]" doc:name="Set password"/>
         <set-variable variableName="state" value="#[&quot;SIP_DETECTED&quot;]" doc:name="Set state (SIP_DETECTED)"/>
-        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <flow-ref name="create_es_message" doc:name="create_es_message"/>
         <logger message="SIP_DETECTED" level="INFO" doc:name="SIP_DETECTED"/>
     </sub-flow>
-    <sub-flow name="get_original_metadata_from_sidecar">
-        <mulerequester:request config-ref="Mule_Requester" resource="#[&quot;ftp://&quot;+flowVars.username+&quot;:&quot;+flowVars.password+&quot;@&quot;+flowVars.host+&quot;/&quot;+flowVars.filepath+&quot;/&quot;+flowVars.filename+&quot;.xml?connector=FTP&quot;]" timeout="10000" throwExceptionOnTimeout="true" doc:name="Read sidecar"/>
+    <sub-flow name="parse_filename">
+        <set-variable variableName="regex" value="([A-Za-z0-9 ]+)_([0-9]{8})-([0-9]{8})(_partial)?.([A-Za-z0-9]+)" doc:name="Set regex"/>
+        <expression-component doc:name="Extract start and end times"><![CDATA[java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(flowVars.regex).matcher(flowVars.originalfilename);
+if (matcher.matches()) {
+	// Group 2 is start time
+	flowVars.startTime = matcher.group(2);
+	// Group 3 is end time
+	flowVars.endTime = matcher.group(3);
+}]]></expression-component>
+    </sub-flow>
+    <sub-flow name="get_original_metadata_from_sidecar">         
+        <mulerequester:request resource="#[&quot;ftp://&quot;+flowVars.username+&quot;:&quot;+flowVars.password+&quot;@&quot;+flowVars.host+&quot;/&quot;+flowVars.filepath+&quot;/&quot;+flowVars.filename+&quot;.xml?connector=FTP&quot;]" timeout="10000" throwExceptionOnTimeout="true" doc:name="Read sidecar"/>
+        <!-- 
+        <sftplite:get-file filePath="#[flowVars.filepath+&quot;/&quot;+flowVars.filename + &quot;.xml&quot;]" hostName="#[flowVars.host]" password="#[flowVars.password]" userName="#[flowVars.username]" doc:name="SFTPLite"/>
+        -->
         <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
         <dw:transform-message doc:name="Extract MediaHAVEN_external_metadata">
             <dw:set-payload><![CDATA[%dw 1.0
@@ -68,7 +88,7 @@ http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema
         <set-variable variableName="briefing_ids" value="#[xpath3(&quot;/string-join(//BriefingID[not(@type='list')]/text(), ' ')&quot;)]" doc:name="Set briefing_ids as text field for logging"/>
         <set-variable variableName="briefing_ids " value="#[flowVars.briefing_ids.replaceAll(&quot;\n&quot;,&quot;&quot;).trim().replaceAll(&quot;        &quot;,&quot; &quot;)]" doc:name="Rewrite briefing_ids without leading and trailing whitespace"/>
         <set-variable variableName="state" value="MD_OBTAINED" doc:name="Set state (MD_OBTAINED)"/>
-        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <flow-ref name="create_es_message" doc:name="create_es_message"/>
         <logger message="MD OBTAINED" level="INFO" doc:name="MD OBTAINED"/>
     </sub-flow>
     <sub-flow name="get_new_pid">
@@ -76,7 +96,7 @@ http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema
         <json:json-to-object-transformer returnClass="be.viaa.response.PIDIdResponse[]" doc:name="Get generated pid"/>
         <set-variable variableName="new_pid" value="#[payload[0].id]" doc:name="Set new_pid"/>
         <set-variable variableName="state" value="#[&quot;PID_OBTAINED&quot;]" doc:name="Set state (PID_OBTAINED)"/>
-        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <flow-ref name="create_es_message" doc:name="create_es_message"/>
         <logger message="PID OBTAINED" level="INFO" doc:name="PID OBTAINED"/>
     </sub-flow>
     <sub-flow name="map_metadata">
@@ -118,7 +138,7 @@ http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema
         <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
         <set-variable variableName="new_metadata" value="#[payload.replaceAll('&lt;PID&gt;'+flowVars.original_pid+'&lt;/PID&gt;', '&lt;PID&gt;'+flowVars.new_pid+'&lt;/PID&gt;').replaceAll('&lt;CP&gt;'+flowVars.original_cp+'&lt;/CP&gt;', '&lt;CP&gt;testbeeld&lt;/CP&gt;').replaceAll('&lt;CP_id&gt;'+flowVars.original_cp_id+'&lt;/CP_id&gt;', '&lt;CP_id&gt;OR-h41jm1d&lt;/CP_id&gt;').replaceAll('&lt;md5&gt;'+flowVars.original_md5+'&lt;/md5&gt;', '').replaceAll('&lt;md5_viaa&gt;'+flowVars.original_md5+'&lt;/md5_viaa&gt;', '').replaceAll('&lt;ingestspacename&gt;'+flowVars.original_ingestspacename+'&lt;/ingestspacename&gt;', '').replaceAll('    \n', '')]" doc:name="Set new_metadata by replacing PID, CP and CP_id and deleting MD5 and ingestspacename"/>
         <set-variable variableName="state" value="#[&quot;METADATA_MAPPED&quot;]" doc:name="Set state (METADATA_MAPPED)"/>
-        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <flow-ref name="create_es_message" doc:name="create_es_message"/>
 
         <logger message="METADATA MAPPED" level="INFO" doc:name="METADATA MAPPED"/>
     </sub-flow>
@@ -147,9 +167,9 @@ http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema
         </dw:transform-message>
         <byte-array-to-string-transformer doc:name="Byte Array to String"/>
 
-        <amqp:outbound-endpoint queueName="fxp_requests" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Send message to fxp_requests"/>
+        <amqp:outbound-endpoint queueName="fxp_requests_fake" responseTimeout="10000"  connector-ref="AMQP_0_9_Connector" doc:name="Send message to fxp_requests"/>
         <set-variable variableName="state" value="#[&quot;SIP_DELIVERED&quot;]" doc:name="Set state (SIP_DELIVERED)"/>
-        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <flow-ref name="create_es_message" doc:name="create_es_message"/>
         <logger message="SIP DELIVERED" level="INFO" doc:name="SIP DELIVERED"/>
     </sub-flow>
     <sub-flow name="delete_original_files">
@@ -166,12 +186,12 @@ http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema
 }]]></dw:set-payload>
         </dw:transform-message>
         <byte-array-to-string-transformer doc:name="Byte Array to String"/>
-        <amqp:outbound-endpoint queueName="delete_requests" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Send message to delete_requests"/>
+        <amqp:outbound-endpoint queueName="delete_requests_fake" responseTimeout="10000"  connector-ref="AMQP_0_9_Connector" doc:name="Send message to delete_requests"/>
         <set-variable variableName="state" value="#[&quot;SIDECAR_DELETED&quot;]" doc:name="Set state (SIDECAR_DELETED)"/>
-        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <flow-ref name="create_es_message" doc:name="create_es_message"/>
         <logger message="SIDECAR DELETED" level="INFO" doc:name="SIDECAR DELETED"/>
     </sub-flow>
-    <sub-flow name="log_elastic_search">
+    <sub-flow name="create_es_message">
         <dw:transform-message doc:name="Create message">
             <dw:set-payload><![CDATA[%dw 1.0
 %output application/json
@@ -188,11 +208,16 @@ http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema
 	(original_pid: flowVars.original_pid) when flowVars.original_pid != null,
 	(new_pid: flowVars.new_pid) when flowVars.new_pid != null,
 	(original_metadata: flowVars.original_metadata) when flowVars.original_metadata != null,
-	(new_metadata: flowVars.new_metadata) when flowVars.new_metadata != null
+	(new_metadata: flowVars.new_metadata) when flowVars.new_metadata != null,
+	(start_time: flowVars.startTime) when flowVars.startTime?,
+	(end_time: flowVars.endTime) when flowVars.endTime?
 }]]></dw:set-payload>
         </dw:transform-message>
         <byte-array-to-string-transformer doc:name="Byte Array to String"/>
+        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+    </sub-flow>
+    <sub-flow name="log_elastic_search">
         <logger message="#[payload]" level="INFO" doc:name="Debug message"/>
-        <http:request config-ref="elastic_search" path="avo_import_export/events" method="POST" doc:name="POST event to ES"/>
+        <http:request config-ref="elastic_search" path="#['${elastic.index}']events" method="POST" doc:name="POST event to ES"/>
     </sub-flow>
 </mule>
