@@ -38,6 +38,7 @@ http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema
     </flow>
     <sub-flow name="init_variables">
         <set-variable variableName="filename" value="#[payload.sip_package[0].file_name.substring(0, payload.sip_package[0].file_name.lastIndexOf('.'))]" doc:name="Set filename without extension"/>
+        <set-variable variableName="source_filename" value="#[payload.sip_package[0].file_name]" doc:name="Set source_filename"/>
         <set-variable variableName="filepath" value="#[payload.sip_package[0].file_path]" doc:name="Set filepath"/>
         <set-variable variableName="host" value="#[payload.server]" doc:name="Set host"/>
         <set-variable variableName="username" value="#[payload.username]" doc:name="Set username"/>
@@ -125,14 +126,14 @@ http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema
     <sub-flow name="transfer_files">
         <set-payload value="#[flowVars.new_metadata]" doc:name="Set Payload with new_metadata"/>
         <ftp:outbound-endpoint host="${ftpDestination.host}" port="21" responseTimeout="10000" doc:name="Export new sidecar to destination" password="${ftpDestination.password}" path="${ftpDestination.path}" user="${ftpDestination.username}" connector-ref="FTP" outputPattern="#[flowVars.new_pid + &quot;.xml&quot;]"/>
-        <dw:transform-message doc:name="Create FXP request for essence with delete FALSE (TODO: set TRUE)">
+        <dw:transform-message doc:name="Create FXP request for essence with delete FALSE (TODO: set TRUE when everything is stable)">
             <dw:set-payload><![CDATA[%dw 1.0
 %output application/json
 ---
 {
 	source_host: flowVars.host,
 	source_path: flowVars.filepath,
-	source_file: flowVars.filename ++ ".MP4",
+	source_file: flowVars.source_filename,
 	source_user: flowVars.username,
 	source_password: flowVars.password,
 	
