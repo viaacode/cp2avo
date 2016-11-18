@@ -33,7 +33,6 @@ http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema
         <flow-ref name="get_new_pid" doc:name="get_new_pid"/>
         <flow-ref name="map_metadata" doc:name="map_metadata"/>
         <flow-ref name="transfer_files" doc:name="transfer_files"/>
-        <flow-ref name="delete_original_files" doc:name="delete_original_files"/>
         <amqp:acknowledge-message doc:name="AMQP-0-9 Acknowledge Message"/>
     </flow>
     <sub-flow name="init_variables">
