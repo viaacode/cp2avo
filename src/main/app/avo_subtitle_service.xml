@@ -26,7 +26,7 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
     <http:listener-config name="avo_subtitle_service-httpListenerConfig" host="0.0.0.0" port="${api.port}" doc:name="HTTP Listener Configuration"/>
     <smtp:gmail-connector name="gmailconfig" doc:name="Gmail"/>
     <apikit:config name="avo_subtitle_service-config" raml="avo_subtitle_service.raml" consoleEnabled="true" doc:name="Router"/>
-    
+    <http:request-config name="OAI_Connector" protocol="HTTPS" host="archief.viaa.be" port="443" basePath="/mediahaven-oai" doc:name="OAI Configuration" />
     
     
     <flow name="avo_subtitle_service-main">
@@ -60,6 +60,7 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
         <flow-ref name="create_subtitle_es_message" doc:name="create_subtitle_es_message"/>
         <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
         <flow-ref name="check_ot_existence" doc:name="check_ot_existence"/>
+        <flow-ref name="export_response_handler" doc:name="export_response_handler"/>
         <set-payload value="{&#xA;  &quot;status&quot; : &quot;OK&quot;,&#xA;  &quot;message&quot; : &quot;Process was successfully started&quot;,&#xA;  &quot;data&quot; : {&#xA;    &quot;pid&quot; : &quot;ht2g73rt02&quot;,&#xA;    &quot;mediamosa_id&quot; : &quot;abc12345&quot;,&#xA;    &quot;starttime&quot;: &quot;10000000&quot;,&#xA;    &quot;endtime&quot; : &quot;10262113&quot;&#xA;  }&#xA;}" doc:name="Set Payload"/>
     </flow>
     <apikit:mapping-exception-strategy name="avo_subtitle_service-apiKitGlobalExceptionMapping">
@@ -173,30 +174,27 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
         <choice doc:name="Are there any OTs available?">
             <when expression="#[payload.size() &gt; 0]">
                 <logger message="Found one or more OTs" level="INFO" doc:name="Yes - Found one or more OTs"/>
-                <set-variable variableName="query_filename" value="#[payload[0].pid + (payload[0].event_name.contains(&quot;open&quot;) ? &quot;_openOt.&quot; : &quot;_closedOt.&quot;) + payload[0].originalextension]" doc:name="Set query_filename"/>
-                <set-variable variableName="query" value="+(MediaObjectOriginalFilename:&quot;#[flowVars.query_filename]&quot;)" doc:name="Set query"/>
-                <flow-ref name="send_export_ot_message" doc:name="send_export_ot_message"/>
+                <set-variable variableName="query_filename" value="#[payload[0].pid + (payload[0].event_name.contains(&quot;open&quot;) ? &quot;_openOt&quot; : &quot;_closedOt&quot;)]" doc:name="Set query_filename"/>
+                <enricher target="#[payload]" doc:name="Message Enricher">
+                    <flow-ref name="get_subtitle_from_oai" doc:name="get_subtitle_from_oai"/>
+                </enricher>
             </when>
             <otherwise>
                 <logger message="Found no OTs for this file" level="INFO" doc:name="No - Found no OTs for this file"/>
             </otherwise>
         </choice>
     </sub-flow>
-    <sub-flow name="send_export_ot_message">
-        <dw:transform-message doc:name="Create initialization message starting at 0">
-            <dw:set-payload><![CDATA[%dw 1.0
-%output application/json
----
-{
-	query: flowVars.query,
-	nrOfResults: 50,
-	startIndex: 0,
-	tenant: 'testbeeld',
-	exportid: flowVars.esData.original_pid ++ '-' ++ now as :localdatetime { format: "ddMMyyyyhhmmss" },
-	type: 'OTHER'
-}]]></dw:set-payload>
-        </dw:transform-message>
-        <amqp:outbound-endpoint queueName="${rabbit.init.queuename}" responseTimeout="10000"  doc:name="AMQP-0-9" connector-ref="AMQP_0_9_Connector"/>
+    <sub-flow name="get_subtitle_from_oai">
+    <http:request config-ref="OAI_Connector" path="/oai?verb=GetRecord&amp;metadataPrefix=mets&amp;identifier=noid:{noid}" method="GET" doc:name="Get subtitle from OAI">
+                        <http:request-builder>
+                <http:uri-param paramName="noid" value="#[flowVars.query_filename]"/>
+                <http:header headerName="Authorization" value="${mh.auth}"/>
+                        </http:request-builder>
+  	</http:request>
+        <mulexml:xml-to-dom-transformer doc:name="XML to DOM"/>
+        <set-variable variableName="requesturl" value="#[xpath3(&quot;//*[local-name()='file'][@USE='PRESERVATION']/*[local-name()='FLocat']/@*[local-name()='href']&quot;)]" doc:name="Set requesturl"/>
+        <mulerequester:request resource="#[flowVars.requesturl]" doc:name="Mule Requester"/>
+        <byte-array-to-string-transformer doc:name="Byte Array to String"/>
     </sub-flow>
     
     <sub-flow name="construct_response">
@@ -231,7 +229,7 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
 		bool: {
 			must: [
 				{ match: { 'new_pid': flowVars.pid } },
-				{ match: { state: 'SIP_DELIVERED' } }
+				{ match: { 'state': 'SIP_DELIVERED' } }
 			]
 		}
 	},
@@ -267,19 +265,13 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
         <flow-ref name="get_first_result" doc:name="get_first_result"/>
     </sub-flow>
     <flow name="export_response_handler">
-        <amqp:inbound-endpoint queueName="${rabbit.exportresponses.queuename}" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Listen for Export Responses"/>
-        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
-        <set-variable variableName="pid" value="#[payload.pid]" doc:name="Set pid"/>
         <enricher target="#[flowVars.esData]" doc:name="Message Enricher">
-            <flow-ref name="get_data_from_es_by_old_pid" doc:name="get_data_from_es_by_old_pid"/>
+            <flow-ref name="get_data_from_es_by_new_pid" doc:name="get_data_from_es_by_new_pid"/>
         </enricher>
-        <foreach collection="#[payload.files]" doc:name="For Each">
-            <set-variable variableName="filePath" value="#[payload.path + &quot;/&quot; + payload.filepath]" doc:name="Set filePath"/>
-            <mulerequester:request resource="ftp://#[payload.username]:#[payload.password]@#[payload.host]/#[flowVars.filePath]?connector=FTP" doc:name="Mule Requester"/>
-            <byte-array-to-string-transformer doc:name="Byte Array to String"/>
-            <set-payload value="#[payload.replace(&quot;&#65533;&quot;, &quot;&quot;).replaceAll(&quot;[\\x00-\\x09\\x11\\x12\\x14-\\x1F\\x7F]&quot;, &quot;&quot;)]" doc:name="Copy_of_Replace invalid characters (thanks, Windows)"/>
-            <dw:transform-message doc:name="Transform Message">
-                <dw:set-payload><![CDATA[%dw 1.0
+        <byte-array-to-string-transformer doc:name="Byte Array to String"/>
+        <set-payload value="#[payload.replace(&quot;&#65533;&quot;, &quot;&quot;).replaceAll(&quot;[\\x00-\\x09\\x11\\x12\\x14-\\x1F\\x7F]&quot;, &quot;&quot;)]" doc:name="Copy_of_Replace invalid characters (thanks, Windows)"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
 %output application/json
 ---
 {
@@ -288,11 +280,9 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
 	correlationid: flowVars.pid,
 	data: payload as :string
 }]]></dw:set-payload>
-            </dw:transform-message>
-            <amqp:outbound-endpoint queueName="${rabbit.vttcut.requestqueue}" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="AMQP-0-9"/>
-            <logger level="INFO" doc:name="Logger"/>
-        </foreach>
-        <amqp:acknowledge-message doc:name="AMQP-0-9 Acknowledge Message"/>
+        </dw:transform-message>
+        <amqp:outbound-endpoint queueName="${rabbit.vttcut.requestqueue}" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="AMQP-0-9"/>
+        <logger level="INFO" doc:name="Logger"/>
     </flow>
     <flow name="cut_vtt_response_handler">
         <amqp:inbound-endpoint queueName="${rabbit.vttcut.responsequeue}" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Listen for VTTCut Responses"/>
@@ -328,9 +318,9 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
                 <set-variable variableName="pid" value="#[payload.response.correlationid]" doc:name="Set pid"/>
                 <set-variable variableName="data" value="#[payload.response.data]" doc:name="Set data"/>
                 <enricher target="#[flowVars.esData]" doc:name="Message Enricher">
-                    <flow-ref name="get_data_from_es_by_old_pid" doc:name="get_data_from_es_by_old_pid"/>
+                    <flow-ref name="get_data_from_es_by_new_pid" doc:name="get_data_from_es_by_old_pid"/>
                 </enricher>
-                <set-variable variableName="email" value="#[flowVars.esData.email]" doc:name="Set email"/>
+                <set-variable variableName="email" value="dieter.vanhoof@c4j.be" doc:name="Set email"/>
                 <logger message="Sending email to #[flowVars.email]" level="INFO" doc:name="Logger"/>
                 <set-attachment attachmentName="#[flowVars.pid].vtt" value="#[flowVars.data]" contentType="text/plain" doc:name="Attachment"/>
                 <set-payload value="Your email with the attached subtitle has arrived for pid #[flowVars.pid]!!!" doc:name="Set Payload"/>
