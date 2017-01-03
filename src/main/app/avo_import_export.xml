@@ -16,16 +16,16 @@ http://www.mulesoft.org/schema/mule/ee/ftp http://www.mulesoft.org/schema/mule/e
 http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema/mule/mulerequester/current/mule-mulerequester.xsd
 http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd"> 
     <context:property-placeholder location="${mule.env}.properties"/>
-    <http:request-config name="PID_webservice" host="${pid.host}" port="${pid.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="30000"/>
+    <http:request-config protocol="HTTP" name="PID_webservice" host="${pid.host}" port="${pid.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="30000"/>
     <ftp:connector streaming="true" name="FTP" pollingFrequency="1000" validateConnections="true" doc:name="FTP"></ftp:connector>
 <!--     <ftp:connector name="FTP"  validateConnections="true" doc:name="FTP" connectionTimeout="10000"/> -->
-    <http:request-config name="elastic_search" host="${elastic.host}" port="${elastic.port}" basePath="${elastic.path}" doc:name="HTTP Request Configuration" responseTimeout="30000" usePersistentConnections="false"/>
+    <http:request-config protocol="HTTP" name="elastic_search" host="${elastic.host}" port="${elastic.port}" basePath="${elastic.path}" doc:name="HTTP Request Configuration" responseTimeout="30000" usePersistentConnections="false"/>
     <mulerequester:config name="Mule_Requester" doc:name="Mule Requester"/>
     <amqp:connector name="AMQP_0_9_Connector" validateConnections="true" host="${rabbit.host}" username="${rabbit.username}" password="${rabbit.password}" ackMode="MANUAL" prefetchCount="1" numberOfChannels="1" doc:name="AMQP-0-9 Connector">
         <reconnect/>
     </amqp:connector>
     <flow name="export_mam_avoFlow">
-		<amqp:inbound-endpoint queueName="avo_export_request" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="Listen to avo_export_request" numberOfChannels="1">
+		<amqp:inbound-endpoint queueName="avo_export_request" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="Listen to avo_export_request" numberOfChannels="1" queueDurable="true">
             <reconnect-forever/>
         </amqp:inbound-endpoint>
         <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
