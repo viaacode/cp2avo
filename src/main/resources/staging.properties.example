@@ -4,7 +4,6 @@ rabbit.port=
 rabbit.username=
 rabbit.password=
 rabbit.queuename=
-rabbit.movequeue=
 
 # PID configuration
 pid.host=

@@ -16,7 +16,7 @@ http://www.mulesoft.org/schema/mule/ee/ftp http://www.mulesoft.org/schema/mule/e
 http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema/mule/mulerequester/current/mule-mulerequester.xsd
 http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd"> 
     <context:property-placeholder location="${mule.env}.properties"/>
-    <http:request-config protocol="HTTP" name="PID_webservice" host="${pid.host}" port="${pid.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="30000"/>
+    <http:request-config  name="PID_webservice" host="${pid.host}" port="${pid.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="30000"/>
     <ftp:connector streaming="true" name="FTP" pollingFrequency="1000" validateConnections="true" doc:name="FTP"></ftp:connector>
 <!--     <ftp:connector name="FTP"  validateConnections="true" doc:name="FTP" connectionTimeout="10000"/> -->
     <http:request-config name="elastic_search" host="${elastic.host}" port="${elastic.port}" basePath="${elastic.path}" doc:name="HTTP Request Configuration" responseTimeout="30000" usePersistentConnections="false"/>
@@ -145,29 +145,34 @@ http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/m
     <sub-flow name="transfer_files">
         <set-payload value="#[flowVars.new_metadata]" doc:name="Set Payload with new_metadata"/>
         <ftp:outbound-endpoint host="${ftpDestination.host}" port="21" responseTimeout="10000" doc:name="Export new sidecar to destination" password="${ftpDestination.password}" path="${ftpDestination.path}" user="${ftpDestination.username}" connector-ref="FTP" outputPattern="#[flowVars.new_pid + &quot;.xml&quot;]"/>
-        <dw:transform-message doc:name="Create FXP request for essence with delete FALSE (TODO: set TRUE when everything is stable)">
+        <dw:transform-message doc:name="Create transcoder request which includes FXP">
             <dw:set-payload><![CDATA[%dw 1.0
 %output application/json
 ---
 {
-	source_host: flowVars.host,
-	source_path: flowVars.filepath,
-	source_file: flowVars.filename ++ "." ++ flowVars.extension,
-	source_user: flowVars.username,
-	source_password: flowVars.password,
+	"destpath":"/tmp/",
 	
-	destination_host: p('ftpDestination.host'),
-	destination_path: p('ftpDestination.path'),
-	destination_file: flowVars.new_pid ++ ".mp4",
-	destination_user: p('ftpDestination.username'),
-	destination_password: p('ftpDestination.password'),
+	src_server: flowVars.host,
+	sourcefile: flowVars.filepath ++ flowVars.filename ++ "." ++ flowVars.extension,
+	src_server_login: flowVars.username,
+	src_server_pass: flowVars.password,
 	
-	move: false
+	dest_server: p('ftpDestination.host'),
+	dest_server_path: p('ftpDestination.path'),
+	dest_server_filename: flowVars.new_pid ++ ".mp4",
+	dest_server_login: p('ftpDestination.username'),
+	dest_server_pass: p('ftpDestination.password'),
+	
+	format: "mp4",
+	height: "576",
+	aspect:"16:9"
+		
+	// move: false
 }]]></dw:set-payload>
         </dw:transform-message>
         <byte-array-to-string-transformer doc:name="Byte Array to String"/>
 
-        <amqp:outbound-endpoint queueName="fxp_requests" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Send message to fxp_requests"/>
+        <amqp:outbound-endpoint queueName="transcoder-dev" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Send message to transcoder-dev"/>
         <set-variable variableName="state" value="#[&quot;SIP_DELIVERED&quot;]" doc:name="Set state (SIP_DELIVERED)"/>
         <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
         <logger message="SIP DELIVERED" level="INFO" doc:name="SIP DELIVERED"/>
