@@ -24,3 +24,10 @@ vrt.ldap_id=
 
 aspect_ratio_api.host=
 aspect_ratio_api.port=
+
+db.host=
+db.port=
+db.username=
+db.password=
+db.database=
+db.buffer=
