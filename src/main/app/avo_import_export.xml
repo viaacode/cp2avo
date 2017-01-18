@@ -200,7 +200,7 @@ where pid = #[flowVars.original_pid] AND event_name = 'audioEssenceAvailableEven
 	dest_server_pass: p('ftpDestination.password'),
 	
 	crop: true,
-	format: "mp4", // must be retranscoded
+	format: "avo", // must be retranscoded
 	height: "480",
 	aspect: flowVars.aspect_ratio_metadata when (flowVars.aspect_ratio_metadata != 'unknown' and flowVars.aspect_ratio_metadata != '"unknown"') 
 			otherwise (flowVars.aspect_ratio_essence when (flowVars.aspect_ratio_essence != 'unknown' and flowVars.aspect_ratio_essence != '"unknown"')
