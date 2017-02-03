@@ -37,6 +37,7 @@
         
         <AsyncRoot level="INFO">
             <AppenderRef ref="file" />
+           	<AppenderRef ref="logstash" />
             <AppenderRef ref="rewrite" />
         </AsyncRoot>
     </Loggers>
