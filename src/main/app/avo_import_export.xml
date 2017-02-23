@@ -373,6 +373,8 @@ where pid = #[flowVars.original_pid] AND event_name = 'audioEssenceAvailableEven
         </dw:transform-message>
         <byte-array-to-string-transformer doc:name="Byte Array to String"/>
         <logger message="#[payload]" level="INFO" doc:name="Debug message"/>
-        <http:request config-ref="elastic_search" path="avo_import_export/events" method="POST" doc:name="POST event to ES"/>
+        <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
+            <http:request config-ref="elastic_search" path="avo_import_export/events" method="POST" doc:name="POST event to ES"/>
+        </until-successful>
     </sub-flow>
 </mule>
