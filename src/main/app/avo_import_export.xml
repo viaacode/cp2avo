@@ -14,11 +14,13 @@ http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee
 http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
 http://www.mulesoft.org/schema/mule/ee/ftp http://www.mulesoft.org/schema/mule/ee/ftp/current/mule-ftp-ee.xsd
 http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema/mule/mulerequester/current/mule-mulerequester.xsd
-http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
-http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd"> 
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd"> 
     <context:property-placeholder location="${mule.env}.properties"/>
      <db:generic-config name="Borndigital" url="jdbc:postgresql://${db.host}:${db.port}/${db.database}?password=${db.password}&amp;user=${db.username}" driverClassName="org.postgresql.Driver" doc:name="Borndigital DB">
         <reconnect-forever></reconnect-forever>  
+    </db:generic-config>
+    <db:generic-config name="POSTGRESQL_Connection" url="jdbc:postgresql://${db.host}:${db.port}/${db.database}?password=${db.password}&amp;user=${db.username}" driverClassName="org.postgresql.Driver" doc:name="Generic Database Configuration"> 		
+        <reconnect frequency="5000" count="25"></reconnect>  		
     </db:generic-config>
     <http:request-config  name="PID_webservice" host="${pid.host}" port="${pid.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="30000"/>
     <ftp:connector streaming="true" name="FTP" pollingFrequency="1000" validateConnections="true" doc:name="FTP"></ftp:connector>
@@ -382,7 +384,7 @@ where pid = #[flowVars.original_pid] AND event_name = 'audioEssenceAvailableEven
 	(original_metadata: flowVars.original_metadata) when flowVars.original_metadata != null,
 	(new_metadata: flowVars.new_metadata) when flowVars.new_metadata != null,
 	(start_time: flowVars.startTime) when flowVars.startTime?,
-	(end_time: flowVars.endTime) when flowVars.endTime?
+	(end_time: flowVars.endTime) when flowVars.endTime?,
 	(aspect_ratio_essence: flowVars.aspect_ratio_essence) when flowVars.aspect_ratio_essence != null,
 	(aspect_ratio_metadata: flowVars.aspect_ratio_metadata) when flowVars.aspect_ratio_metadata != null,
 	(is_aspect_ratio_correct: flowVars.is_aspect_ratio_correct) when flowVars.is_aspect_ratio_correct != null,
