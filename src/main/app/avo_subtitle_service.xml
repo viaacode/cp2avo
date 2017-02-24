@@ -181,6 +181,7 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
             </when>
             <otherwise>
                 <logger message="Found no OTs for this file" level="INFO" doc:name="No - Found no OTs for this file"/>
+                <expression-component doc:name="Expression"><![CDATA[throw new be.viaa.exceptions.NoSubtitleFoundException("No subtitle was found for this file");]]></expression-component>
             </otherwise>
         </choice>
     </sub-flow>

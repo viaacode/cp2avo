@@ -10,14 +10,13 @@ http://www.mulesoft.org/schema/mule/anypoint-mq http://www.mulesoft.org/schema/m
 http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
 http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-current.xsd
 http://www.mulesoft.org/schema/mule/xml http://www.mulesoft.org/schema/mule/xml/current/mule-xml.xsd
-http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
 http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
 http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
 http://www.mulesoft.org/schema/mule/ee/ftp http://www.mulesoft.org/schema/mule/ee/ftp/current/mule-ftp-ee.xsd
 http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema/mule/mulerequester/current/mule-mulerequester.xsd
 http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd"> 
     <context:property-placeholder location="${mule.env}.properties"/>
-    <http:request-config protocol="HTTP" name="PID_webservice" host="${pid.host}" port="${pid.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="30000"/>
+    <http:request-config  name="PID_webservice" host="${pid.host}" port="${pid.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="30000"/>
     <ftp:connector streaming="true" name="FTP" pollingFrequency="1000" validateConnections="true" doc:name="FTP"></ftp:connector>
 <!--     <ftp:connector name="FTP"  validateConnections="true" doc:name="FTP" connectionTimeout="10000"/> -->
     <http:request-config name="elastic_search" host="${elastic.host}" port="${elastic.port}" basePath="${elastic.path}" doc:name="HTTP Request Configuration" responseTimeout="30000" usePersistentConnections="false"/>
@@ -40,6 +39,7 @@ http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/m
         </amqp:inbound-endpoint>
         <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
         <flow-ref name="init_variables" doc:name="init_variables"/>
+        <flow-ref name="parse_filename" doc:name="parse_filename"/>
         <flow-ref name="get_original_metadata_from_sidecar" doc:name="get_original_metadata_from_sidecar"/>
         <flow-ref name="get_new_pid" doc:name="get_new_pid"/>
         <flow-ref name="map_metadata" doc:name="map_metadata"/>
@@ -74,7 +74,7 @@ http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/m
         <logger message="SIP_DETECTED" level="INFO" doc:name="SIP_DETECTED"/>
     </sub-flow>
     <sub-flow name="parse_filename">
-        <set-variable variableName="regex" value="([A-Za-z0-9 ]+)_([0-9]{8})-([0-9]{8})(_partial)?.([A-Za-z0-9]+)" doc:name="Set regex"/>
+        <set-variable variableName="regex" value="([A-Za-z0-9 -]+)_([0-9]{8})-([0-9]{8})(_partial)?.([A-Za-z0-9]+)" doc:name="Set regex"/>
         <expression-component doc:name="Extract start and end times"><![CDATA[java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(flowVars.regex).matcher(flowVars.originalfilename);
 if (matcher.matches()) {
 	// Group 2 is start time
@@ -187,7 +187,7 @@ if (matcher.matches()) {
         </dw:transform-message>
         <byte-array-to-string-transformer doc:name="Byte Array to String"/>
 
-        <amqp:outbound-endpoint queueName="fxp_requests_fake" responseTimeout="10000"  connector-ref="AMQP_0_9_Connector" doc:name="Send message to fxp_requests"/>
+        <amqp:outbound-endpoint queueName="${rabbit.fxp_requests}" responseTimeout="10000"  connector-ref="AMQP_0_9_Connector" doc:name="Send message to fxp_requests"/>
         <set-variable variableName="state" value="#[&quot;SIP_DELIVERED&quot;]" doc:name="Set state (SIP_DELIVERED)"/>
         <flow-ref name="create_es_message" doc:name="create_es_message"/>
         <logger message="SIP DELIVERED" level="INFO" doc:name="SIP DELIVERED"/>
