@@ -63,7 +63,9 @@ http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/m
         <catch-exception-strategy doc:name="Catch Exception Strategy">
             <logger message="Something went wrong with #[flowVars.filename]" level="INFO" doc:name="Something went wrong"/>
             <set-variable variableName="state" value="#['FAILED']" doc:name="Set state (FAILED)"/>
-            <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+            <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
+                <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+            </until-successful>
             <set-payload value="#[flowVars.original_message]" doc:name="Set Payload to original_message"/>
             <amqp:outbound-endpoint queueName="avo_export_request_errors" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Send message to avo_export_request_errors">
                 <reconnect/>
@@ -90,7 +92,9 @@ http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/m
         <set-variable variableName="username" value="#[payload.username]" doc:name="Set username"/>
         <set-variable variableName="password" value="#[payload.password]" doc:name="Set password"/>
         <set-variable variableName="state" value="#[&quot;SIP_DETECTED&quot;]" doc:name="Set state (SIP_DETECTED)"/>
-        <flow-ref name="create_es_message" doc:name="create_es_message"/>
+        <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
+            <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        </until-successful>
         <logger message="SIP_DETECTED" level="INFO" doc:name="SIP_DETECTED"/>
     </sub-flow>
     <sub-flow name="parse_filename">
@@ -104,9 +108,11 @@ if (matcher.matches()) {
 }]]></expression-component>
     </sub-flow>
     <sub-flow name="check_filename_special_characters">
-        <set-variable variableName="filename_contains_bad_characters" value="#[flowVars.filename.matches(&quot;.*[()#].*&quot;)]" doc:name="Set filename_contains_bad_characters (e.g.: ()#)"/>
+        <set-variable variableName="filename_contains_bad_characters" value="#[flowVars.filename.matches(&quot;.*[()#&#235;].*&quot;)]" doc:name="Set filename_contains_bad_characters (e.g.: ()#)"/>
         <set-variable variableName="state" value="BAD_CHAR_CHECKED" doc:name="Set state (BAD_CHAR_CHECKED)"/>
-        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
+            <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        </until-successful>
         <logger message="BAD_CHAR_CHECKED: #[flowVars.filename_contains_bad_characters]" level="INFO" doc:name="BAD_CHAR_CHECKED"/>
     </sub-flow>
     <sub-flow name="move_files_for_correct_name">
@@ -155,7 +161,9 @@ if (matcher.matches()) {
             <reconnect-forever/>
         </amqp:outbound-endpoint>
         <set-variable variableName="state" value="FILES_MOVED" doc:name="Set state (FILES_MOVED)"/>
-        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
+            <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        </until-successful>
         <logger message="FILES_MOVED" level="INFO" doc:name="FILES_MOVED"/>
     </sub-flow>
     <sub-flow name="get_original_metadata_from_sidecar">
@@ -199,7 +207,9 @@ if (matcher.matches()) {
         <set-variable variableName="briefing_ids" value="#[xpath3(&quot;/string-join(//BriefingID[not(@type='list')]/text(), ' ')&quot;)]" doc:name="Set briefing_ids as text field for logging"/>
         <set-variable variableName="briefing_ids " value="#[flowVars.briefing_ids.replaceAll(&quot;\n&quot;,&quot;&quot;).trim().replaceAll(&quot;        &quot;,&quot; &quot;)]" doc:name="Rewrite briefing_ids without leading and trailing whitespace"/>
         <set-variable variableName="state" value="MD_OBTAINED" doc:name="Set state (MD_OBTAINED)"/>
-        <flow-ref name="create_es_message" doc:name="create_es_message"/>
+        <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
+            <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        </until-successful>
         <logger message="MD OBTAINED" level="INFO" doc:name="MD OBTAINED"/>
     </sub-flow>
     <sub-flow name="get_new_pid">
@@ -208,6 +218,9 @@ if (matcher.matches()) {
         <set-variable variableName="new_pid" value="#[payload[0].id]" doc:name="Set new_pid"/>
         <set-variable variableName="state" value="#[&quot;PID_OBTAINED&quot;]" doc:name="Set state (PID_OBTAINED)"/>
         <flow-ref name="create_es_message" doc:name="create_es_message"/>
+        <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
+            <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        </until-successful>
         <logger message="PID OBTAINED" level="INFO" doc:name="PID OBTAINED"/>
     </sub-flow>
     <sub-flow name="map_metadata">
@@ -249,8 +262,9 @@ if (matcher.matches()) {
         <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
         <set-variable variableName="new_metadata" value="#[payload.replaceAll('&lt;PID&gt;'+flowVars.original_pid+'&lt;/PID&gt;', '&lt;PID&gt;'+flowVars.new_pid+'&lt;/PID&gt;').replaceAll('&lt;CP&gt;'+flowVars.original_cp+'&lt;/CP&gt;', '&lt;CP&gt;testbeeld&lt;/CP&gt;').replaceAll('&lt;CP_id&gt;'+flowVars.original_cp_id+'&lt;/CP_id&gt;', '&lt;CP_id&gt;OR-h41jm1d&lt;/CP_id&gt;').replaceAll('&lt;md5&gt;'+flowVars.original_md5+'&lt;/md5&gt;', '').replaceAll('&lt;md5_viaa&gt;'+flowVars.original_md5+'&lt;/md5_viaa&gt;', '').replaceAll('&lt;ingestspacename&gt;'+flowVars.original_ingestspacename+'&lt;/ingestspacename&gt;', '').replaceAll('    \n', '')]" doc:name="Set new_metadata by replacing PID, CP and CP_id and deleting MD5 and ingestspacename"/>
         <set-variable variableName="state" value="#[&quot;METADATA_MAPPED&quot;]" doc:name="Set state (METADATA_MAPPED)"/>
-        <flow-ref name="create_es_message" doc:name="create_es_message"/>
-
+        <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
+            <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        </until-successful>
         <logger message="METADATA MAPPED" level="INFO" doc:name="METADATA MAPPED"/>
     </sub-flow>
     <sub-flow name="check_if_audio">
@@ -276,7 +290,9 @@ where pid = #[flowVars.original_pid] AND event_name = 'audioEssenceAvailableEven
             </otherwise>
         </choice>
         <set-variable variableName="state" value="#[&quot;ASPECT_RATIO_CHECK&quot;]" doc:name="Set state (ASPECT_RATIO_CHECK)"/>
-        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
+            <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        </until-successful>
         <logger message="ASPECT RATIO CHECKED" level="INFO" doc:name="ASPECT RATIO CHECKED"/>
     </sub-flow>
     <sub-flow name="transfer_files">
@@ -343,7 +359,9 @@ where pid = #[flowVars.original_pid] AND event_name = 'audioEssenceAvailableEven
             </otherwise>
         </choice>
         <set-variable variableName="state" value="#[&quot;SIP_DELIVERED&quot;]" doc:name="Set state (SIP_DELIVERED)"/>
-        <flow-ref name="create_es_message" doc:name="create_es_message"/>
+        <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
+            <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        </until-successful>
         <logger message="SIP DELIVERED" level="INFO" doc:name="SIP DELIVERED"/>
     </sub-flow>
     <sub-flow name="delete_original_files">
@@ -362,7 +380,9 @@ where pid = #[flowVars.original_pid] AND event_name = 'audioEssenceAvailableEven
         <byte-array-to-string-transformer doc:name="Byte Array to String"/>
         <amqp:outbound-endpoint queueName="delete_requests_fake" responseTimeout="10000"  connector-ref="AMQP_0_9_Connector" doc:name="Send message to delete_requests"/>
         <set-variable variableName="state" value="#[&quot;SIDECAR_DELETED&quot;]" doc:name="Set state (SIDECAR_DELETED)"/>
-        <flow-ref name="create_es_message" doc:name="create_es_message"/>
+        <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
+            <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        </until-successful>
         <logger message="SIDECAR DELETED" level="INFO" doc:name="SIDECAR DELETED"/>
     </sub-flow>
     <sub-flow name="create_es_message">
@@ -396,8 +416,6 @@ where pid = #[flowVars.original_pid] AND event_name = 'audioEssenceAvailableEven
     </sub-flow>
     <sub-flow name="log_elastic_search">
         <logger message="#[payload]" level="INFO" doc:name="Debug message"/>
-        <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
-		<http:request config-ref="elastic_search" path="#['${elastic.index}']events" method="POST" doc:name="POST event to ES"/>
-        </until-successful>
+        <http:request config-ref="elastic_search" path="avo_import_export/events" method="POST" doc:name="POST event to ES"/>
     </sub-flow>
 </mule>
