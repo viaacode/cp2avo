@@ -14,19 +14,20 @@ http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee
 http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
 http://www.mulesoft.org/schema/mule/ee/ftp http://www.mulesoft.org/schema/mule/ee/ftp/current/mule-ftp-ee.xsd
 http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema/mule/mulerequester/current/mule-mulerequester.xsd
-http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd"> 
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd"> 
     <context:property-placeholder location="${mule.env}.properties"/>
+     <db:generic-config name="Borndigital" url="jdbc:postgresql://${db.host}:${db.port}/${db.database}?password=${db.password}&amp;user=${db.username}" driverClassName="org.postgresql.Driver" doc:name="Borndigital DB">
+        <reconnect-forever></reconnect-forever>  
+    </db:generic-config>
     <http:request-config  name="PID_webservice" host="${pid.host}" port="${pid.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="30000"/>
     <ftp:connector streaming="true" name="FTP" pollingFrequency="1000" validateConnections="true" doc:name="FTP"></ftp:connector>
 <!--     <ftp:connector name="FTP"  validateConnections="true" doc:name="FTP" connectionTimeout="10000"/> -->
-    <http:request-config name="elastic_search" host="${elastic.host}" port="${elastic.port}" basePath="${elastic.path}" doc:name="HTTP Request Configuration" responseTimeout="30000" usePersistentConnections="false"/>
-    <!-- DATABASE -->
-    <db:generic-config name="POSTGRESQL_Connection" url="jdbc:postgresql://${db.host}:${db.port}/${db.database}?password=${db.password}&amp;user=${db.username}" driverClassName="org.postgresql.Driver" doc:name="Generic Database Configuration"> 
-        <reconnect frequency="5000" count="25"></reconnect>  
-    </db:generic-config>
-    <amqp:connector name="AMQP_0_9_Connector" validateConnections="true" host="${rabbit.host}" username="${rabbit.username}" password="${rabbit.password}" ackMode="MANUAL" prefetchCount="1" numberOfChannels="1" doc:name="AMQP-0-9 Connector">
+    <http:request-config name="elastic_search" host="${elastic.host}" port="${elastic.port}" basePath="${elastic.path}" doc:name="HTTP Request Configuration" responseTimeout="30000" />
+    <amqp:connector name="AMQP_0_9_Connector" validateConnections="true" host="${rabbit.host}" username="${rabbit.username}" password="${rabbit.password}" ackMode="MANUAL" prefetchCount="1" numberOfChannels="2" doc:name="AMQP-0-9 Connector" priority="9">
         <reconnect/>
     </amqp:connector>
+    <http:request-config name="Aspect_ratio_API" host="${aspect_ratio_api.host}" port="${aspect_ratio_api.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="30000"/>
     <flow name="export_mam_avoFlow">
         <amqp:inbound-endpoint
 			queueName="avo_export_request"
@@ -37,18 +38,35 @@ http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/m
 			numberOfChannels="1">
             <reconnect-forever/>
         </amqp:inbound-endpoint>
+        <set-variable variableName="original_message" value="#[payload]" doc:name="Set original_message"/>
         <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
         <flow-ref name="init_variables" doc:name="init_variables"/>
-        <flow-ref name="parse_filename" doc:name="parse_filename"/>
-        <flow-ref name="get_original_metadata_from_sidecar" doc:name="get_original_metadata_from_sidecar"/>
-        <flow-ref name="get_new_pid" doc:name="get_new_pid"/>
-        <flow-ref name="map_metadata" doc:name="map_metadata"/>
-        <flow-ref name="transfer_files" doc:name="transfer_files"/>
-        <amqp:acknowledge-message doc:name="AMQP-0-9 Acknowledge Message"/>
+        <flow-ref name="check_filename_special_characters" doc:name="check_filename_special_characters"/>
+        <choice doc:name="Contains bad characters?">
+            <when expression="#[flowVars.filename_contains_bad_characters==false]">
+                <logger message="Doesn't contain bad chars" level="INFO" category="  " doc:name="Doesn't contain bad chars"/>
+		<flow-ref name="parse_filename" doc:name="parse_filename"/>
+		<flow-ref name="get_original_metadata_from_sidecar" doc:name="get_original_metadata_from_sidecar"/>
+                <flow-ref name="get_new_pid" doc:name="get_new_pid"/>
+                <flow-ref name="map_metadata" doc:name="map_metadata"/>
+                <flow-ref name="check_if_audio" doc:name="check_if_audio"/>
+                <flow-ref name="check_aspect_ratio" doc:name="check_aspect_ratio"/>
+                <flow-ref name="transfer_files" doc:name="transfer_files"/>
+            </when>
+            <otherwise>
+                <flow-ref name="move_files_for_correct_name" doc:name="move_files_for_correct_name"/>
+            </otherwise>
+        </choice>
+       	<amqp:acknowledge-message doc:name="AMQP-0-9 Acknowledge Message"/>
         <catch-exception-strategy doc:name="Catch Exception Strategy">
             <logger message="Something went wrong with #[flowVars.filename]" level="INFO" doc:name="Something went wrong"/>
             <set-variable variableName="state" value="#['FAILED']" doc:name="Set state (FAILED)"/>
             <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+            <set-payload value="#[flowVars.original_message]" doc:name="Set Payload to original_message"/>
+            <amqp:outbound-endpoint queueName="avo_export_request_errors" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Send message to avo_export_request_errors">
+                <reconnect/>
+            </amqp:outbound-endpoint>
+            <amqp:acknowledge-message doc:name="AMQP-0-9 Acknowledge Message"/>
         </catch-exception-strategy>
     </flow>
     <sub-flow name="init_variables">
@@ -83,8 +101,63 @@ if (matcher.matches()) {
 	flowVars.endTime = matcher.group(3);
 }]]></expression-component>
     </sub-flow>
-    <sub-flow name="get_original_metadata_from_sidecar">         
-        <mulerequester:request resource="#[&quot;ftp://&quot;+flowVars.username+&quot;:&quot;+flowVars.password+&quot;@&quot;+flowVars.host+&quot;/&quot;+flowVars.filepath+&quot;/&quot;+flowVars.filename+&quot;.xml?connector=FTP&quot;]" timeout="10000" throwExceptionOnTimeout="true" doc:name="Read sidecar"/>
+    <sub-flow name="check_filename_special_characters">
+        <set-variable variableName="filename_contains_bad_characters" value="#[flowVars.filename.matches(&quot;.*[()#].*&quot;)]" doc:name="Set filename_contains_bad_characters (e.g.: ()#)"/>
+        <set-variable variableName="state" value="BAD_CHAR_CHECKED" doc:name="Set state (BAD_CHAR_CHECKED)"/>
+        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <logger message="BAD_CHAR_CHECKED: #[flowVars.filename_contains_bad_characters]" level="INFO" doc:name="BAD_CHAR_CHECKED"/>
+    </sub-flow>
+    <sub-flow name="move_files_for_correct_name">
+        <set-variable variableName="filename_corrected" value="#[flowVars.filename.replaceAll(&quot;\\(&quot;,&quot; &quot;).replaceAll(&quot;\\)&quot;,&quot; &quot;).replaceAll(&quot;#&quot;,&quot; &quot;).trim()]" doc:name="Set filename_corrected"/>
+        <set-variable variableName="destinationpath" value="#['/export/home/viaa/incoming/naarAVO']" doc:name="Set destinationpath to naarAVO"/>
+        <dw:transform-message doc:name="Build move request for sidecar">
+            <dw:input-variable variableName="currentItem"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+	%input payload application/java
+	%output application/json
+	---
+	{
+		"source_name": flowVars.filename ++ ".xml",
+		"destination_name": flowVars.filename_corrected ++ ".xml",
+		"source_path": flowVars.filepath,
+		"destination_path": flowVars.destinationpath,
+	    "host": flowVars.host,
+	    "username": flowVars.username,
+	    "password": flowVars.password,
+	    "correlation_id": ""
+	}]]></dw:set-payload>
+        </dw:transform-message>
+        <byte-array-to-string-transformer doc:name="Byte Array to String"/>
+        <amqp:outbound-endpoint queueName="move_requests" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="Send message to move_requests">
+            <reconnect-forever/>
+        </amqp:outbound-endpoint>
+        <dw:transform-message doc:name="Build move request for essence">
+            <dw:input-variable variableName="currentItem"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+	%input payload application/java
+	%output application/json
+	---
+	{
+		"source_name": flowVars.filename ++ "." ++ flowVars.extension,
+		"destination_name": flowVars.filename_corrected ++ "." ++ flowVars.extension,
+		"source_path": flowVars.filepath,
+		"destination_path": flowVars.destinationpath,
+	    "host": flowVars.host,
+	    "username": flowVars.username,
+	    "password": flowVars.password,
+	    "correlation_id": ""
+	}]]></dw:set-payload>
+        </dw:transform-message>
+        <byte-array-to-string-transformer doc:name="Byte Array to String"/>
+        <amqp:outbound-endpoint queueName="move_requests" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="Send message to move_requests">
+            <reconnect-forever/>
+        </amqp:outbound-endpoint>
+        <set-variable variableName="state" value="FILES_MOVED" doc:name="Set state (FILES_MOVED)"/>
+        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <logger message="FILES_MOVED" level="INFO" doc:name="FILES_MOVED"/>
+    </sub-flow>
+    <sub-flow name="get_original_metadata_from_sidecar">
+	    <mulerequester:request resource="#[&quot;ftp://&quot;+flowVars.username+&quot;:&quot;+flowVars.password+&quot;@&quot;+flowVars.host+&quot;/&quot;+flowVars.filepath+&quot;/&quot;+flowVars.filename+&quot;.xml?connector=FTP&quot;]" timeout="10000" throwExceptionOnTimeout="true" doc:name="Read sidecar"/>
         <!-- 
         <sftplite:get-file filePath="#[flowVars.filepath+&quot;/&quot;+flowVars.filename + &quot;.xml&quot;]" hostName="#[flowVars.host]" password="#[flowVars.password]" userName="#[flowVars.username]" doc:name="SFTPLite"/>
         -->
@@ -96,6 +169,22 @@ if (matcher.matches()) {
 ---
 {
     MediaHAVEN_external_metadata: payload.mets.dmdSec.mdWrap.xmlData.MediaHAVEN_external_metadata    
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
+        <dw:transform-message doc:name="Make simpler version (disgarding extra metadata features of MH 17.1)">
+            <dw:input-payload doc:sample="sample_data/empty_1.xml"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/xml
+---
+{
+	MediaHAVEN_external_metadata: {
+		(title: payload.MediaHAVEN_external_metadata.title) when payload.MediaHAVEN_external_metadata.title?,
+		(description: payload.MediaHAVEN_external_metadata.description) when payload.MediaHAVEN_external_metadata.description?,
+		(mime_type: payload.MediaHAVEN_external_metadata.mime_type) when payload.MediaHAVEN_external_metadata.mime_type?,
+		(keywords: payload.MediaHAVEN_external_metadata.keywords) when payload.MediaHAVEN_external_metadata.keywords?,
+		MDProperties: payload.MediaHAVEN_external_metadata.MDProperties
+	}
 }]]></dw:set-payload>
         </dw:transform-message>
         <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
@@ -162,11 +251,73 @@ if (matcher.matches()) {
 
         <logger message="METADATA MAPPED" level="INFO" doc:name="METADATA MAPPED"/>
     </sub-flow>
+    <sub-flow name="check_if_audio">
+        <db:select config-ref="Borndigital" doc:name="Query vrt buffer to see which type of essence">
+            <db:parameterized-query><![CDATA[select *
+from ${db.buffer}
+where pid = #[flowVars.original_pid] AND event_name = 'audioEssenceAvailableEvent']]></db:parameterized-query>
+        </db:select>
+        <set-variable variableName="is_audio" value="#[payload.size()&gt;0]" doc:name="Set is_audio"/>
+    </sub-flow>
+    <sub-flow name="check_aspect_ratio">
+        <choice doc:name="No check when audio">
+            <when expression="#[flowVars.is_audio.equals(true) || extension.equals('WAV') || flowVars.extension.equals('wav')]">
+                <set-variable variableName="is_aspect_ratio_correct" value="#[true]" doc:name="Set is_aspect_ratio_correct TRUE for audio"/>
+            </when>
+            <otherwise>
+                <http:request config-ref="Aspect_ratio_API" path="#['/vrt/' + flowVars.original_pid]" method="GET" doc:name="Request aspect ratios of the original (vrt) pid to see difference between metadata and essence"/>
+                <byte-array-to-string-transformer doc:name="Byte Array to String"/>
+                <json:json-to-object-transformer doc:name="JSON to Object"/>
+                <set-variable variableName="aspect_ratio_essence" value="#[payload.get('data').get('aspect_ratio_essence').toString().replaceAll('&quot;','')]" doc:name="Set aspect_ratio_essence"/>
+                <set-variable variableName="aspect_ratio_metadata" value="#[payload.get('data').get('aspect_ratio_metadata').toString().replaceAll('&quot;','')]" doc:name="Set aspect_ratio_metadata"/>
+                <set-variable variableName="is_aspect_ratio_correct" value="#[flowVars.aspect_ratio_essence.equals(flowVars.aspect_ratio_metadata)]" doc:name="Set is_aspect_ratio_correct"/>
+            </otherwise>
+        </choice>
+        <set-variable variableName="state" value="#[&quot;ASPECT_RATIO_CHECK&quot;]" doc:name="Set state (ASPECT_RATIO_CHECK)"/>
+        <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+        <logger message="ASPECT RATIO CHECKED" level="INFO" doc:name="ASPECT RATIO CHECKED"/>
+    </sub-flow>
     <sub-flow name="transfer_files">
         <set-payload value="#[flowVars.new_metadata]" doc:name="Set Payload with new_metadata"/>
         <ftp:outbound-endpoint host="${ftpDestination.host}" port="21" responseTimeout="10000" doc:name="Export new sidecar to destination" password="${ftpDestination.password}" path="${ftpDestination.path}" user="${ftpDestination.username}" connector-ref="FTP" outputPattern="#[flowVars.new_pid + &quot;.xml&quot;]"/>
-        <dw:transform-message doc:name="Create FXP request for essence with delete FALSE (TODO: set TRUE when everything is stable)">
-            <dw:set-payload><![CDATA[%dw 1.0
+        <choice doc:name="Is the aspect ratio of the essence correct?">
+            <when expression="#[flowVars.is_aspect_ratio_correct == false]">
+                <logger message="ARs are not equal, use the" level="INFO" doc:name="Aspect ratio is not correct, send request to transcoder"/>
+                <dw:transform-message doc:name="Create transcoder request which includes FXP">
+                    <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	"destpath": flowVars.filepath ++ "/tmp/",
+	
+	src_server: flowVars.host,
+	sourcefile: flowVars.filepath ++ '/' ++ flowVars.filename ++ "." ++ flowVars.extension,
+	src_server_login: flowVars.username,
+	src_server_pass: flowVars.password,
+	
+	dest_server: p('ftpDestination.host'),
+	dest_server_path: p('ftpDestination.path'),
+	dest_server_filename: flowVars.new_pid ++ ".mp4",
+	dest_server_login: p('ftpDestination.username'),
+	dest_server_pass: p('ftpDestination.password'),
+	
+	crop: true,
+	format: "avo", // must be retranscoded
+	height: "480",
+	aspect: flowVars.aspect_ratio_metadata when (flowVars.aspect_ratio_metadata != 'unknown' and flowVars.aspect_ratio_metadata != '"unknown"') 
+			otherwise (flowVars.aspect_ratio_essence when (flowVars.aspect_ratio_essence != 'unknown' and flowVars.aspect_ratio_essence != '"unknown"')
+			otherwise 'auto') // ffprobe will search for it when unknown
+		
+	// move: false
+}]]></dw:set-payload>
+                </dw:transform-message>
+                <byte-array-to-string-transformer doc:name="Byte Array to String"/>
+                <amqp:outbound-endpoint queueName="transcoder_requests" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Send message to transcoder_requests"/>
+            </when>
+            <otherwise>
+                <logger level="INFO" doc:name="Aspect ratio is correct, send request to FXP"/>
+                <dw:transform-message doc:name="Create FXP request">
+                    <dw:set-payload><![CDATA[%dw 1.0
 %output application/json
 ---
 {
@@ -184,10 +335,11 @@ if (matcher.matches()) {
 	
 	move: false
 }]]></dw:set-payload>
-        </dw:transform-message>
-        <byte-array-to-string-transformer doc:name="Byte Array to String"/>
-
-        <amqp:outbound-endpoint queueName="${rabbit.fxp_requests}" responseTimeout="10000"  connector-ref="AMQP_0_9_Connector" doc:name="Send message to fxp_requests"/>
+                </dw:transform-message>
+                <byte-array-to-string-transformer doc:name="Byte Array to String"/>
+		<amqp:outbound-endpoint queueName="${rabbit.fxp_requests}" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Send message to fxp_requests"/>
+            </otherwise>
+        </choice>
         <set-variable variableName="state" value="#[&quot;SIP_DELIVERED&quot;]" doc:name="Set state (SIP_DELIVERED)"/>
         <flow-ref name="create_es_message" doc:name="create_es_message"/>
         <logger message="SIP DELIVERED" level="INFO" doc:name="SIP DELIVERED"/>
@@ -231,6 +383,10 @@ if (matcher.matches()) {
 	(new_metadata: flowVars.new_metadata) when flowVars.new_metadata != null,
 	(start_time: flowVars.startTime) when flowVars.startTime?,
 	(end_time: flowVars.endTime) when flowVars.endTime?
+	(aspect_ratio_essence: flowVars.aspect_ratio_essence) when flowVars.aspect_ratio_essence != null,
+	(aspect_ratio_metadata: flowVars.aspect_ratio_metadata) when flowVars.aspect_ratio_metadata != null,
+	(is_aspect_ratio_correct: flowVars.is_aspect_ratio_correct) when flowVars.is_aspect_ratio_correct != null,
+	(filename_contains_bad_characters: flowVars.filename_contains_bad_characters) when flowVars.filename_contains_bad_characters != null
 }]]></dw:set-payload>
         </dw:transform-message>
         <byte-array-to-string-transformer doc:name="Byte Array to String"/>
@@ -238,6 +394,8 @@ if (matcher.matches()) {
     </sub-flow>
     <sub-flow name="log_elastic_search">
         <logger message="#[payload]" level="INFO" doc:name="Debug message"/>
-        <http:request config-ref="elastic_search" path="#['${elastic.index}']events" method="POST" doc:name="POST event to ES"/>
+        <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
+		<http:request config-ref="elastic_search" path="#['${elastic.index}']events" method="POST" doc:name="POST event to ES"/>
+        </until-successful>
     </sub-flow>
 </mule>
