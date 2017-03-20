@@ -48,7 +48,6 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
                 <flow-ref name="get_original_metadata_from_sidecar" doc:name="get_original_metadata_from_sidecar"/>
                 <flow-ref name="get_new_pid" doc:name="get_new_pid"/>
                 <flow-ref name="map_metadata" doc:name="map_metadata"/>
-                <flow-ref name="check_if_audio" doc:name="check_if_audio"/>
                 <flow-ref name="check_aspect_ratio" doc:name="check_aspect_ratio"/>
                 <flow-ref name="transfer_files" doc:name="transfer_files"/>
             </when>
@@ -101,7 +100,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
         <logger message="BAD_CHAR_CHECKED: #[flowVars.filename_contains_bad_characters]" level="INFO" doc:name="BAD_CHAR_CHECKED"/>
     </sub-flow>
     <sub-flow name="move_files_for_correct_name">
-        <set-variable variableName="filename_corrected" value="#[flowVars.filename.replaceAll(&quot;\\(&quot;,&quot; &quot;).replaceAll(&quot;\\)&quot;,&quot; &quot;).replaceAll(&quot;#&quot;,&quot; &quot;).trim()]" doc:name="Set filename_corrected"/>
+        <set-variable variableName="filename_corrected" value="#[flowVars.filename.replaceAll(&quot;\\(&quot;,&quot; &quot;).replaceAll(&quot;\\)&quot;,&quot; &quot;).replaceAll(&quot;#&quot;,&quot; &quot;).replaceAll(&quot;&#235;&quot;,&quot;e&quot;).trim()]" doc:name="Set filename_corrected"/>
         <set-variable variableName="destinationpath" value="#['/export/home/viaa/incoming/naarAVO']" doc:name="Set destinationpath to naarAVO"/>
         <dw:transform-message doc:name="Build move request for sidecar">
             <dw:input-variable variableName="currentItem"/>
@@ -164,6 +163,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
 }]]></dw:set-payload>
         </dw:transform-message>
         <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
+        <set-variable variableName="is_audio" value="#[xpath3('//MimeType/text()').contains(&quot;audio&quot;)]" doc:name="Set is_audio (from mime_type inside technical metadata)"/>
         <dw:transform-message doc:name="Make simpler version (disgarding extra metadata features of MH 17.1)">
             <dw:input-payload doc:sample="sample_data/empty_1.xml"/>
             <dw:set-payload><![CDATA[%dw 1.0
@@ -249,32 +249,26 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
 
         <logger message="METADATA MAPPED" level="INFO" doc:name="METADATA MAPPED"/>
     </sub-flow>
-    <sub-flow name="check_if_audio">
-        <db:select config-ref="Borndigital" doc:name="Query vrt buffer to see which type of essence">
-            <db:parameterized-query><![CDATA[select *
-from ${db.buffer}
-where pid = #[flowVars.original_pid] AND event_name = 'audioEssenceAvailableEvent']]></db:parameterized-query>
-        </db:select>
-        <set-variable variableName="is_audio" value="#[payload.size()&gt;0]" doc:name="Set is_audio"/>
-    </sub-flow>
     <sub-flow name="check_aspect_ratio">
         <choice doc:name="No check when audio">
             <when expression="#[flowVars.is_audio.equals(true) || extension.equals('WAV') || flowVars.extension.equals('wav')]">
                 <set-variable variableName="is_aspect_ratio_correct" value="#[true]" doc:name="Set is_aspect_ratio_correct TRUE for audio"/>
             </when>
             <otherwise>
-                <http:request config-ref="Aspect_ratio_API" path="#['/vrt/' + flowVars.original_pid]" method="GET" doc:name="Request aspect ratios of the original (vrt) pid to see difference between metadata and essence"/>
+                <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
+                    <http:request config-ref="Aspect_ratio_API" path="#['/vrt/' + flowVars.original_pid]" method="GET" doc:name="Request aspect ratios of the original (vrt) pid to see difference between metadata and essence"/>
+                </until-successful>
                 <byte-array-to-string-transformer doc:name="Byte Array to String"/>
                 <json:json-to-object-transformer doc:name="JSON to Object"/>
                 <set-variable variableName="aspect_ratio_essence" value="#[payload.get('data').get('aspect_ratio_essence').toString().replaceAll('&quot;','')]" doc:name="Set aspect_ratio_essence"/>
                 <set-variable variableName="aspect_ratio_metadata" value="#[payload.get('data').get('aspect_ratio_metadata').toString().replaceAll('&quot;','')]" doc:name="Set aspect_ratio_metadata"/>
                 <set-variable variableName="is_aspect_ratio_correct" value="#[flowVars.aspect_ratio_essence.equals(flowVars.aspect_ratio_metadata)]" doc:name="Set is_aspect_ratio_correct"/>
+                <set-variable variableName="state" value="#[&quot;ASPECT_RATIO_CHECK&quot;]" doc:name="Set state (ASPECT_RATIO_CHECK)"/>
+                <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
+                    <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+                </until-successful>
             </otherwise>
         </choice>
-        <set-variable variableName="state" value="#[&quot;ASPECT_RATIO_CHECK&quot;]" doc:name="Set state (ASPECT_RATIO_CHECK)"/>
-        <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
-            <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
-        </until-successful>
         <logger message="ASPECT RATIO CHECKED" level="INFO" doc:name="ASPECT RATIO CHECKED"/>
     </sub-flow>
     <sub-flow name="transfer_files">
@@ -377,6 +371,7 @@ where pid = #[flowVars.original_pid] AND event_name = 'audioEssenceAvailableEven
 	timestamp:  now as :datetime {format: "yyyy-MM-dd'T'HH:mm:ss.SSSZ"},
 	(tenant: flowVars.tenant) when flowVars.tenant != null,
 	(filename: flowVars.filename) when flowVars.filename != null,
+	(extension: flowVars.extension) when flowVars.extension != null,
 	(filepath: flowVars.filepath) when flowVars.filepath != null,
 	(host: flowVars.host) when flowVars.host != null,
 	(briefing_ids: flowVars.briefing_ids) when flowVars.briefing_ids != null,
@@ -387,6 +382,7 @@ where pid = #[flowVars.original_pid] AND event_name = 'audioEssenceAvailableEven
 	(new_metadata: flowVars.new_metadata) when flowVars.new_metadata != null,
 	(aspect_ratio_essence: flowVars.aspect_ratio_essence) when flowVars.aspect_ratio_essence != null,
 	(aspect_ratio_metadata: flowVars.aspect_ratio_metadata) when flowVars.aspect_ratio_metadata != null,
+	(is_audio: flowVars.is_audio) when flowVars.is_audio != null,
 	(is_aspect_ratio_correct: flowVars.is_aspect_ratio_correct) when flowVars.is_aspect_ratio_correct != null,
 	(filename_contains_bad_characters: flowVars.filename_contains_bad_characters) when flowVars.filename_contains_bad_characters != null
 }]]></dw:set-payload>
