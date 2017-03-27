@@ -92,7 +92,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
         <logger message="SIP_DETECTED" level="INFO" doc:name="SIP_DETECTED"/>
     </sub-flow>
     <sub-flow name="check_filename_special_characters">
-        <set-variable variableName="filename_contains_bad_characters" value="#[flowVars.filename.matches(&quot;.*[()#&#235;+].*&quot;)]" doc:name="Set filename_contains_bad_characters (e.g.: ()#&#235;+)"/>
+        <set-variable variableName="filename_contains_bad_characters" value="#[flowVars.filename.matches(&quot;.*[()#&#235;+%].*&quot;)]" doc:name="Set filename_contains_bad_characters (e.g.: ()#&#235;+%)"/>
         <set-variable variableName="state" value="BAD_CHAR_CHECKED" doc:name="Set state (BAD_CHAR_CHECKED)"/>
         <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
             <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
@@ -100,7 +100,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
         <logger message="BAD_CHAR_CHECKED: #[flowVars.filename_contains_bad_characters]" level="INFO" doc:name="BAD_CHAR_CHECKED"/>
     </sub-flow>
     <sub-flow name="move_files_for_correct_name">
-        <set-variable variableName="filename_corrected" value="#[flowVars.filename.replaceAll(&quot;\\(&quot;,&quot; &quot;).replaceAll(&quot;\\)&quot;,&quot; &quot;).replaceAll(&quot;#&quot;,&quot; &quot;).replaceAll(&quot;&#235;&quot;,&quot;e&quot;).replaceAll(&quot;\\+&quot;,&quot;&quot;).trim()]" doc:name="Set filename_corrected"/>
+        <set-variable variableName="filename_corrected" value="#[flowVars.filename.replaceAll(&quot;\\(&quot;,&quot; &quot;).replaceAll(&quot;\\)&quot;,&quot; &quot;).replaceAll(&quot;#&quot;,&quot; &quot;).replaceAll(&quot;&#235;&quot;,&quot;e&quot;).replaceAll(&quot;\\+&quot;,&quot;&quot;).replaceAll(&quot;\\%&quot;,&quot;&quot;).trim()]" doc:name="Set filename_corrected"/>
         <set-variable variableName="destinationpath" value="#['/export/home/viaa/incoming/naarAVO']" doc:name="Set destinationpath to naarAVO"/>
         <dw:transform-message doc:name="Build move request for sidecar">
             <dw:input-variable variableName="currentItem"/>
