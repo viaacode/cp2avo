@@ -284,7 +284,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
         <set-payload value="#[flowVars.new_metadata]" doc:name="Set Payload with new_metadata"/>
         <ftp:outbound-endpoint host="${ftpDestination.host}" port="21" responseTimeout="10000" doc:name="Export new sidecar to destination" password="${ftpDestination.password}" path="${ftpDestination.path}" user="${ftpDestination.username}" connector-ref="FTP" outputPattern="#[flowVars.new_pid + &quot;.xml&quot;]"/>
         <choice doc:name="Is the aspect ratio of the essence correct or does the file need to be cropped?">
-            <when expression="#[flowVars.is_aspect_ratio_correct == false || flowVars.format.equals(&quot;avo_crop_top&quot;)]">
+            <when expression="#[flowVars.is_aspect_ratio_correct == false || flowVars.profile.equals(&quot;avo_crop_top&quot;)]">
                 <logger message="ARs are not equal, use the" level="INFO" doc:name="Aspect ratio is not correct, send request to transcoder"/>
                 <dw:transform-message doc:name="Create transcoder request which includes FXP">
                     <dw:set-payload><![CDATA[%dw 1.0
@@ -305,7 +305,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
 	dest_server_pass: p('ftpDestination.password'),
 	
 	crop: true,
-	format: flowVars.format, // must be retranscoded
+	format: flowVars.profile, // must be retranscoded
 	height: "480",
 	aspect: flowVars.aspect_ratio_metadata when (flowVars.aspect_ratio_metadata != 'unknown' and flowVars.aspect_ratio_metadata != '"unknown"') 
 			otherwise (flowVars.aspect_ratio_essence when (flowVars.aspect_ratio_essence != 'unknown' and flowVars.aspect_ratio_essence != '"unknown"')
