@@ -253,6 +253,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
         <choice doc:name="No check when audio or original_cp is testbeeld">
             <when expression="#[flowVars.is_audio.equals(true) || extension.equals('WAV') || flowVars.extension.equals('wav') || flowVars.original_cp.equals(&quot;testbeeld&quot;)]">
                 <set-variable variableName="is_aspect_ratio_correct" value="#[true]" doc:name="Set is_aspect_ratio_correct TRUE for audio"/>
+                <set-variable variableName="profile" value="avo" doc:name="Set profile to avo (otherwise mule gives null pointer later)"/>
             </when>
             <otherwise>
                 <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
@@ -267,10 +268,10 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
 		<set-variable variableName="height" value="#[payload.get('data').get('hires_height').toString().replaceAll('&quot;','')]" doc:name="Set height"/>
 		<choice doc:name="Choice">
 			<when expression="#[flowVars.height != null &amp;&amp; (flowVars.height == (576+32) || flowVars.height == (1080+32))]">
-				<set-variable variableName="profile" value="avo_crop_top" doc:name="Set profile"/>
+				<set-variable variableName="profile" value="avo_crop_top" doc:name="Set profile to avo_crop_top"/>
 			</when>
 			<otherwise>
-				<set-variable variableName="profile" value="avo" doc:name="Set profile"/>
+				<set-variable variableName="profile" value="avo" doc:name="Set profile to avo"/>
 			</otherwise>
 		</choice>
 		<until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
