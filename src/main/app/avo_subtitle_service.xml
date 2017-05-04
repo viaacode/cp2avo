@@ -357,7 +357,7 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
             <flow-ref name="get_data_from_es_by_new_pid" doc:name="get_data_from_es_by_new_pid"/>
         </enricher>
         <byte-array-to-string-transformer doc:name="Byte Array to String"/>
-        <set-payload value="#[payload.replace(&quot;&#65533;&quot;, &quot;&quot;).replaceAll(&quot;[\\x00-\\x09\\x11\\x12\\x14-\\x1F\\x7F]&quot;, &quot;&quot;)]" doc:name="Copy_of_Replace invalid characters (thanks, Windows)"/>
+        <set-payload value="#[payload.replace(&quot;&#65533;&quot;, &quot;&quot;).replaceAll(&quot;[\\x00-\\x09\\x11\\x12\\x14-\\x1F\\x7F]&quot;, &quot;&quot;)]" doc:name="Replace invalid characters (thanks, Windows)"/>
         <dw:transform-message doc:name="Transform Message">
             <dw:set-payload><![CDATA[%dw 1.0
 %output application/json
@@ -405,9 +405,9 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
                 <set-variable variableName="pid" value="#[payload.response.correlationid]" doc:name="Set pid"/>
                 <set-variable variableName="data" value="#[payload.response.data]" doc:name="Set data"/>
                 <enricher target="#[flowVars.esData]" doc:name="Message Enricher">
-                    <flow-ref name="get_data_from_es_by_new_pid" doc:name="get_data_from_es_by_new_pid"/>
+                    <flow-ref name="get_data_from_es_by_new_pid_subtitleevent" doc:name="get_data_from_es_by_new_pid_subtitleevent"/>
                 </enricher>
-                <set-variable variableName="email" value="dieter.vanhoof@c4j.be" doc:name="Set email"/>
+                <set-variable variableName="email" value="#[flowVars.esData.email]" doc:name="Set email"/>
                 <logger message="Sending email to #[flowVars.email]" level="INFO" doc:name="Logger"/>
                 <set-attachment attachmentName="#[flowVars.pid].vtt" value="#[flowVars.data]" contentType="text/plain" doc:name="Attachment"/>
                 <set-payload value="Your email with the attached subtitle has arrived for pid #[flowVars.pid]. See the attached file." doc:name="Set Payload"/>
@@ -419,4 +419,27 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
         </choice>
         <amqp:acknowledge-message doc:name="AMQP-0-9 Acknowledge Message"/>
     </flow>
+    <sub-flow name="get_data_from_es_by_new_pid_subtitleevent">
+        <dw:transform-message doc:name="Generate search request">
+            <dw:input-variable doc:sample="sample_data/MyPojo.dwl" variableName="oldPid"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	query: {
+		bool: {
+			must: [
+				{ match: { 'new_pid': flowVars.pid } },
+				{ match: { 'state': 'SUBTITLE_REQUESTED' } }
+			]
+		}
+	},
+	size: 1,
+	sort: { timestamp: { order: 'desc' }}
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <http:request config-ref="elastic_search" path="#['${elastic.index}']_search" method="POST" doc:name="Get PID from ES"/>
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+        <flow-ref name="get_first_result" doc:name="get_first_result"/>
+    </sub-flow>
 </mule>
