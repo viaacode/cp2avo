@@ -228,7 +228,7 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
        <sub-flow name="check_ot_existence">
         <set-variable variableName="original_pid" value="#[flowVars.esData.original_pid.split(&quot;_&quot;)[0]]" doc:name="Correct pid in case it has a version nr"/>
         <db:select config-ref="Borndigital" doc:name="Get OTs for this pid from vrt_message_buffer">
-            <db:parameterized-query><![CDATA[SELECT * FROM ${db.buffer} WHERE pid LIKE #[flowVars.original_pid + '%'] AND event_name IN('closedOtAvailableEvent', 'openOtAvailableEvent') AND status IN('completed', 'delivered') ORDER BY receptiondate DESC;]]></db:parameterized-query>
+            <db:parameterized-query><![CDATA[SELECT * FROM ${db.buffer} WHERE pid LIKE #[flowVars.original_pid + '%'] AND event_name IN('closedOtAvailableEvent', 'openOtAvailableEvent') AND status IN('completed', 'delivered') ORDER BY reception_date DESC;]]></db:parameterized-query>
         </db:select>
         <choice doc:name="Are there any OTs available?">
             <when expression="#[payload.size() &gt; 0]">
