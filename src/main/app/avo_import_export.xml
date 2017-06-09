@@ -99,7 +99,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
         <logger message="SIP_DETECTED" level="INFO" doc:name="SIP_DETECTED"/>
     </sub-flow>
     <sub-flow name="check_filename_special_characters">
-        <set-variable variableName="filename_contains_bad_characters" value="#[flowVars.filename.matches(&quot;.*[()#&#235;+%&#233;].*&quot;)]" doc:name="Set filename_contains_bad_characters (e.g.: ()#&#235;+%)"/>
+        <set-variable variableName="filename_contains_bad_characters" value="#[flowVars.filename.matches(&quot;.*[\\[\\]()#&#235;+%&#233;&#8217;].*&quot;)]" doc:name="Set filename_contains_bad_characters (e.g.: ()#&#235;+%)"/>
         <set-variable variableName="state" value="BAD_CHAR_CHECKED" doc:name="Set state (BAD_CHAR_CHECKED)"/>
         <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
             <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
@@ -107,7 +107,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
         <logger message="BAD_CHAR_CHECKED: #[flowVars.filename_contains_bad_characters]" level="INFO" doc:name="BAD_CHAR_CHECKED"/>
     </sub-flow>
     <sub-flow name="move_files_for_correct_name">
-        <set-variable variableName="filename_corrected" value="#[flowVars.filename.replaceAll(&quot;\\(&quot;,&quot; &quot;).replaceAll(&quot;\\)&quot;,&quot; &quot;).replaceAll(&quot;#&quot;,&quot; &quot;).replaceAll(&quot;&#235;&quot;,&quot;e&quot;).replaceAll(&quot;&#233;&quot;,&quot;e&quot;).replaceAll(&quot;\\+&quot;,&quot;&quot;).replaceAll(&quot;\\%&quot;,&quot;&quot;).trim()]" doc:name="Set filename_corrected"/>
+        <set-variable variableName="filename_corrected" value="#[flowVars.filename.replaceAll(&quot;\\(&quot;,&quot; &quot;).replaceAll(&quot;\\)&quot;,&quot; &quot;).replaceAll(&quot;#&quot;,&quot; &quot;).replaceAll(&quot;&#235;&quot;,&quot;e&quot;).replaceAll(&quot;&#233;&quot;,&quot;e&quot;).replaceAll(&quot;\\+&quot;,&quot;&quot;).replaceAll(&quot;\\%&quot;,&quot;&quot;).replaceAll(&quot;&#8217;&quot;,&quot;&quot;).replaceAll(&quot;\\[&quot;,&quot; &quot;).replaceAll(&quot;\\]&quot;,&quot; &quot;).trim()]" doc:name="Set filename_corrected"/>
         <set-variable variableName="destinationpath" value="#['/export/home/viaa/incoming/naarAVO']" doc:name="Set destinationpath to naarAVO"/>
         <dw:transform-message doc:name="Build move request for sidecar">
             <dw:input-variable variableName="currentItem"/>
@@ -190,9 +190,9 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
         <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
         <set-variable variableName="original_metadata" value="#[payload]" doc:name="Set original_metadata with MHEM"/>
         <set-variable variableName="original_pid" value="#[xpath3('//PID/text()')]" doc:name="Set original_pid"/>
-        <set-variable variableName="original_cp" value="#[xpath3('//CP/text()')]" doc:name="Set original_cp"/>
+        <set-variable variableName="original_cp" value="#[xpath3('//Original_CP/text()') == &quot;&quot; ? xpath3('//CP/text()') : xpath3('//Original_CP/text()')]" doc:name="Set original_cp (re-use when already filled in)"/>
         <set-variable variableName="original_md5" value="#[xpath3('//md5_viaa/text()')]" doc:name="Set original_md5"/>
-        <set-variable variableName="original_cp_id" value="#[xpath3('//CP_id/text()')]" doc:name="Set original_cp_id"/>
+        <set-variable variableName="original_cp_id" value="#[xpath3('//Original_CP_id/text()') == &quot;&quot; ? xpath3('//CP_id/text()') : xpath3('//Original_CP_id/text()')]" doc:name="Set original_cp_id"/>
         <set-variable variableName="original_ingestspacename" value="#[xpath3('//ingestspacename/text()')]" doc:name="Set original_ingestspacename"/>
         <set-variable variableName="original_department" value="#[xpath3('//Department/text()')]" doc:name="Set original_department"/>
         <set-variable variableName="original_isiningestspace" value="#[xpath3('//isiningestspace/text()')]" doc:name="Set original_isiningestspace"/>
@@ -296,7 +296,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
         <ftp:outbound-endpoint host="${ftpDestination.host}" port="21" responseTimeout="10000" doc:name="Export new sidecar to destination" password="${ftpDestination.password}" path="${ftpDestination.path}" user="${ftpDestination.username}" connector-ref="FTP" outputPattern="#[flowVars.new_pid + &quot;.xml&quot;]"/>
         <choice doc:name="Is (the aspect ratio of the essence correct OR not from VRT) or does the file need to be cropped?">
             <when expression="#[flowVars.original_cp_id == &quot;OR-rf5kf25&quot; &amp;&amp; (flowVars.is_aspect_ratio_correct == false || flowVars.profile.equals(&quot;avo_crop_top&quot;))]">
-                <logger message="ARs are not equal, use the" level="INFO" doc:name="Aspect ratio is not correct, send request to transcoder"/>
+                <logger message="ARs are not equal, use the transcoder" level="INFO" doc:name="Aspect ratio is not correct, send request to transcoder"/>
                 <dw:transform-message doc:name="Create transcoder request which includes FXP">
                     <dw:set-payload><![CDATA[%dw 1.0
 %output application/json
