@@ -196,6 +196,8 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
         <set-variable variableName="original_ingestspacename" value="#[xpath3('//ingestspacename/text()')]" doc:name="Set original_ingestspacename"/>
         <set-variable variableName="original_department" value="#[xpath3('//Department/text()')]" doc:name="Set original_department"/>
         <set-variable variableName="original_isiningestspace" value="#[xpath3('//isiningestspace/text()')]" doc:name="Set original_isiningestspace"/>
+        <set-variable variableName="bestandsnaam" value="#[xpath3('//bestandsnaam/text()')]" doc:name="Set original_bestandsnaam"/>
+        <set-variable variableName="original_dc_source" value="#[xpath3('//dc_source/text()')]" doc:name="Set original_dc_source"/>
         <set-variable variableName="briefing_ids" value="#[xpath3(&quot;/string-join(//BriefingID[not(@type='list')]/text(), ' ')&quot;)]" doc:name="Set briefing_ids as text field for logging"/>
         <set-variable variableName="briefing_ids " value="#[flowVars.briefing_ids.replaceAll(&quot;\n&quot;,&quot;&quot;).trim().replaceAll(&quot;        &quot;,&quot; &quot;)]" doc:name="Rewrite briefing_ids without leading and trailing whitespace"/>
         <set-variable variableName="state" value="MD_OBTAINED" doc:name="Set state (MD_OBTAINED)"/>
@@ -218,7 +220,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
         <set-payload value="#[flowVars.original_metadata]" doc:name="Set Payload with original_metadata"/>
         <mulexml:dom-to-xml-transformer doc:name="DOM to XML (because it needs to an object and not a string)"/>
         <dw:transform-message metadata:id="0118c471-3028-463b-a667-7e79cd43bf6a" doc:name="Create adapted metadata">
-            <dw:input-payload doc:sample="sample_data/empty.xml"/>
+            <dw:input-payload />
             <dw:input-variable variableName="metadata_no_root"/>
             <dw:input-variable variableName="generated_pid"/>
             <dw:input-variable doc:sample="sample_data\empty_2.xml" variableName="pid"/>
@@ -236,8 +238,20 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
 		)),
 		"MDProperties": {
 			(payload.MediaHAVEN_external_metadata.*MDProperties map (
-				$
-			)),
+            $ mapObject (
+                '$$' @(($.@ default {} mapObject { '$$': $ })): $ when '$$' != 'dc_identifier_localids' otherwise {
+                    (
+                        $ mapObject (
+                        '$$' @(($.@ default {} mapObject { '$$': $ })): $
+                        )
+                    ),
+                    bestandsnaam: flowVars.filename ++ "." ++ flowVars.extension
+                }
+            ))),
+           	("dc_identifier_localids" @(type: "list"): {
+            	bestandsnaam: flowVars.source_filename
+            }) when payload.MediaHAVEN_external_metadata.MDProperties."dc_identifier_localids" == null,
+			dc_source: flowVars.filename ++ "." ++ flowVars.extension,
 			// Original CP
 			Original_CP: flowVars.original_cp,
 			// Original CP ID
@@ -251,7 +265,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
 }]]></dw:set-payload>
         </dw:transform-message>
         <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
-        <set-variable variableName="new_metadata" value="#[payload.replaceAll('&lt;PID&gt;'+flowVars.original_pid+'&lt;/PID&gt;', '&lt;PID&gt;'+flowVars.new_pid+'&lt;/PID&gt;').replaceAll('&lt;CP&gt;'+flowVars.original_cp+'&lt;/CP&gt;', '&lt;CP&gt;testbeeld&lt;/CP&gt;').replaceAll('&lt;CP_id&gt;'+flowVars.original_cp_id+'&lt;/CP_id&gt;', '&lt;CP_id&gt;OR-h41jm1d&lt;/CP_id&gt;').replaceAll('&lt;md5&gt;'+flowVars.original_md5+'&lt;/md5&gt;', '').replaceAll('&lt;md5_viaa&gt;'+flowVars.original_md5+'&lt;/md5_viaa&gt;', '').replaceAll('&lt;ingestspacename&gt;'+flowVars.original_ingestspacename+'&lt;/ingestspacename&gt;', '').replaceAll('&lt;Department&gt;'+flowVars.original_department+'&lt;/Department&gt;', '').replaceAll('&lt;isiningestspace&gt;'+flowVars.original_isiningestspace+'&lt;/isiningestspace&gt;', '').replaceAll('    \n', '')]" doc:name="Set new_metadata by replacing PID, CP and CP_id and deleting MD5, ingestspacename, department and isiningestspace"/>
+        <set-variable variableName="new_metadata" value="#[payload.replaceAll('&lt;PID&gt;'+flowVars.original_pid+'&lt;/PID&gt;', '&lt;PID&gt;'+flowVars.new_pid+'&lt;/PID&gt;').replaceAll('&lt;CP&gt;'+flowVars.original_cp+'&lt;/CP&gt;', '&lt;CP&gt;testbeeld&lt;/CP&gt;').replaceAll('&lt;CP_id&gt;'+flowVars.original_cp_id+'&lt;/CP_id&gt;', '&lt;CP_id&gt;OR-h41jm1d&lt;/CP_id&gt;').replaceAll('&lt;md5&gt;'+flowVars.original_md5+'&lt;/md5&gt;', '').replaceAll('&lt;md5_viaa&gt;'+flowVars.original_md5+'&lt;/md5_viaa&gt;', '').replaceAll('&lt;ingestspacename&gt;'+flowVars.original_ingestspacename+'&lt;/ingestspacename&gt;', '').replaceAll('&lt;Department&gt;'+flowVars.original_department+'&lt;/Department&gt;', '').replaceAll('&lt;isiningestspace&gt;'+flowVars.original_isiningestspace+'&lt;/isiningestspace&gt;', '').replaceAll('&lt;dc_source&gt;'+flowVars.original_dc_source+'&lt;/dc_source&gt;', '').replaceAll('    \n', '')]" doc:name="Set new_metadata by replacing PID, CP and CP_id and deleting MD5, ingestspacename, department, isiningestspace and original dc_source"/>
         <set-variable variableName="state" value="#[&quot;METADATA_MAPPED&quot;]" doc:name="Set state (METADATA_MAPPED)"/>
         <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
             <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
