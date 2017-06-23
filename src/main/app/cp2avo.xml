@@ -253,13 +253,13 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
             }) when payload.MediaHAVEN_external_metadata.MDProperties."dc_identifier_localids" == null,
 			dc_source: flowVars.filename ++ "." ++ flowVars.extension,
 			// Original CP
-			Original_CP: flowVars.original_cp,
+			(Original_CP: flowVars.original_cp) when payload.MediaHAVEN_external_metadata.MDProperties.Original_CP == null,
 			// Original CP ID
-			Original_CP_id: flowVars.original_cp_id,
+			(Original_CP_id: flowVars.original_cp_id) when payload.MediaHAVEN_external_metadata.MDProperties.Original_CP == null,
 			// Add relation to original PID
-			"dc_relations" @(type: "list"): {
+			("dc_relations" @(type: "list"): {
 				is_verwant_aan: flowVars.original_pid
-			}
+			}) when payload.MediaHAVEN_external_metadata.MDProperties.Original_CP == null
 		}
 	}
 }]]></dw:set-payload>
@@ -274,9 +274,10 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
         <logger message="METADATA MAPPED" level="INFO" doc:name="METADATA MAPPED"/>
     </sub-flow>
     <sub-flow name="check_aspect_ratio">
-        <choice doc:name="No check when audio or original_cp is testbeeld">
-            <when expression="#[flowVars.is_audio.equals(true) || extension.equals('WAV') || flowVars.extension.equals('wav') || flowVars.original_cp.equals(&quot;testbeeld&quot;)]">
-                <set-variable variableName="is_aspect_ratio_correct" value="#[true]" doc:name="Set is_aspect_ratio_correct TRUE for audio"/>
+        <set-variable variableName="comesFromTestbeeld" value="#[xpath3('//Original_CP', flowVars.original_metadata) != &quot;&quot;]" doc:name="Set comesFromTestbeeld"/>
+        <choice doc:name="No check when audio or comes again from testbeeld">
+            <when expression="#[flowVars.is_audio.equals(true) || extension.equals('WAV') || flowVars.extension.equals('wav') || flowVars.comesFromTestbeeld.equals(true)]">
+                <set-variable variableName="is_aspect_ratio_correct" value="#[true]" doc:name="Set is_aspect_ratio_correct TRUE"/>
                 <set-variable variableName="profile" value="avo" doc:name="Set profile to avo (otherwise mule gives null pointer later)"/>
             </when>
             <otherwise>
