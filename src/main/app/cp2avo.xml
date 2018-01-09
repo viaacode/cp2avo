@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:mulerequester="http://www.mulesoft.org/schema/mule/mulerequester" xmlns:ftp="http://www.mulesoft.org/schema/mule/ee/ftp" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:mulexml="http://www.mulesoft.org/schema/mule/xml" xmlns:context="http://www.springframework.org/schema/context" xmlns:amqps="http://www.mulesoft.org/schema/mule/amqps" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:anypoint-mq="http://www.mulesoft.org/schema/mule/anypoint-mq" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+<mule xmlns:ftplite="http://www.mulesoft.org/schema/mule/ftplite" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:mulerequester="http://www.mulesoft.org/schema/mule/mulerequester" xmlns:ftp="http://www.mulesoft.org/schema/mule/ee/ftp" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:mulexml="http://www.mulesoft.org/schema/mule/xml" xmlns:context="http://www.springframework.org/schema/context" xmlns:amqps="http://www.mulesoft.org/schema/mule/amqps" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:anypoint-mq="http://www.mulesoft.org/schema/mule/anypoint-mq" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
 	xmlns:spring="http://www.springframework.org/schema/beans" 
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
@@ -15,7 +15,8 @@ http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee
 http://www.mulesoft.org/schema/mule/ee/ftp http://www.mulesoft.org/schema/mule/ee/ftp/current/mule-ftp-ee.xsd
 http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema/mule/mulerequester/current/mule-mulerequester.xsd
 http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
-http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd"> 
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ftplite http://www.mulesoft.org/schema/mule/ftplite/current/mule-ftplite.xsd"> 
     <context:property-placeholder location="${mule.env}.properties"/>
      <db:generic-config name="Borndigital" url="jdbc:postgresql://${db.host}:${db.port}/${db.database}?password=${db.password}&amp;user=${db.username}" driverClassName="org.postgresql.Driver" doc:name="Borndigital DB">
         <reconnect-forever></reconnect-forever>  
@@ -28,6 +29,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
         <reconnect/>
     </amqp:connector>
     <http:request-config name="Aspect_ratio_API" host="${aspect_ratio_api.host}" port="${aspect_ratio_api.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="120000"/>
+    <ftplite:config name="FTPLite__Configuration" doc:name="FTPLite: Configuration"/>
     <flow name="export_mam_avoFlow">
         <amqp:inbound-endpoint
 			queueName="avo_export_request"
@@ -41,27 +43,19 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
         <set-variable variableName="original_message" value="#[payload]" doc:name="Set original_message"/>
         <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
         <flow-ref name="init_variables" doc:name="init_variables"/>
-        <flow-ref name="check_filename_special_characters" doc:name="check_filename_special_characters"/>
-        <choice doc:name="Contains bad characters?">
-            <when expression="#[flowVars.filename_contains_bad_characters==false]">
-                <logger message="Doesn't contain bad chars" level="INFO" category="  " doc:name="Doesn't contain bad chars"/>
-                <flow-ref name="get_original_metadata_from_sidecar" doc:name="get_original_metadata_from_sidecar"/>
-                <flow-ref name="get_new_pid" doc:name="get_new_pid"/>
-                <flow-ref name="map_metadata" doc:name="map_metadata"/>
-                <choice doc:name="When original CP is VRT check AR">
-                    <when expression="#[flowVars.original_cp_id == &quot;OR-rf5kf25&quot;]">
-                        <flow-ref name="check_aspect_ratio" doc:name="check_aspect_ratio"/>
-                    </when>
-                    <otherwise>
-                        <expression-component doc:name="Do nothing"><![CDATA[// Do nothing]]></expression-component>
-                    </otherwise>
-                </choice>
-                <flow-ref name="transfer_files" doc:name="transfer_files"/>
-            </when>
-            <otherwise>
-                <flow-ref name="move_files_for_correct_name" doc:name="move_files_for_correct_name"/>
-            </otherwise>
-        </choice>
+		<logger message="Doesn't contain bad chars" level="INFO" category="  " doc:name="Doesn't contain bad chars"/>
+	    <flow-ref name="get_original_metadata_from_sidecar" doc:name="get_original_metadata_from_sidecar"/>
+	    <flow-ref name="get_new_pid" doc:name="get_new_pid"/>
+	    <flow-ref name="map_metadata" doc:name="map_metadata"/>
+	    <choice doc:name="When original CP is VRT check AR">
+	        <when expression="#[flowVars.original_cp_id == &quot;OR-rf5kf25&quot;]">
+	            <flow-ref name="check_aspect_ratio" doc:name="check_aspect_ratio"/>
+	        </when>
+	        <otherwise>
+	            <expression-component doc:name="Do nothing"><![CDATA[// Do nothing]]></expression-component>
+	        </otherwise>
+	    </choice>
+	    <flow-ref name="transfer_files" doc:name="transfer_files"/>
        	<amqp:acknowledge-message doc:name="AMQP-0-9 Acknowledge Message"/>
         <catch-exception-strategy doc:name="Catch Exception Strategy">
             <logger message="Something went wrong with #[flowVars.filename]" level="INFO" doc:name="Something went wrong"/>
@@ -158,7 +152,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
         <logger message="FILES_MOVED" level="INFO" doc:name="FILES_MOVED"/>
     </sub-flow>
     <sub-flow name="get_original_metadata_from_sidecar">
-        <mulerequester:request resource="#[&quot;ftp://&quot;+flowVars.username+&quot;:&quot;+flowVars.password+&quot;@&quot;+flowVars.host+&quot;/&quot;+flowVars.filepath+&quot;/&quot;+flowVars.filename+&quot;.xml?connector=FTP&quot;]" timeout="10000" throwExceptionOnTimeout="true" doc:name="Read sidecar"/>
+        <ftplite:get-file-content config-ref="FTPLite__Configuration" fileName="#[flowVars.filename + &quot;.xml&quot;]" filePath="#[flowVars.filepath]" hostName="#[flowVars.host]" password="#[flowVars.password]" userName="#[flowVars.username]" doc:name="FTPLite"/>
         <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
         <dw:transform-message doc:name="Extract MediaHAVEN_external_metadata">
             <dw:set-payload><![CDATA[%dw 1.0
