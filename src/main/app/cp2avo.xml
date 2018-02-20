@@ -11,16 +11,16 @@ http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amq
 http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-current.xsd
 http://www.mulesoft.org/schema/mule/xml http://www.mulesoft.org/schema/mule/xml/current/mule-xml.xsd
 http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
-http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
 http://www.mulesoft.org/schema/mule/ee/ftp http://www.mulesoft.org/schema/mule/ee/ftp/current/mule-ftp-ee.xsd
 http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema/mule/mulerequester/current/mule-mulerequester.xsd
-http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd"> 
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd"> 
     <context:property-placeholder location="${mule.env}.properties"/>
      <db:generic-config name="Borndigital" url="jdbc:postgresql://${db.host}:${db.port}/${db.database}?password=${db.password}&amp;user=${db.username}" driverClassName="org.postgresql.Driver" doc:name="Borndigital DB">
         <reconnect-forever></reconnect-forever>  
     </db:generic-config>
-    <db:generic-config name="POSTGRESQL_Connection" url="jdbc:postgresql://${db.host}:${db.port}/${db.database}?password=${db.password}&amp;user=${db.username}" driverClassName="org.postgresql.Driver" doc:name="Generic Database Configuration"> 		
-        <reconnect frequency="5000" count="25"></reconnect>  		
+    <db:generic-config name="POSTGRESQL_Connection" url="jdbc:postgresql://${db.host}:${db.port}/${db.database}?password=${db.password}&amp;user=${db.username}" driverClassName="org.postgresql.Driver" doc:name="Generic Database Configuration">
+        <reconnect frequency="5000" count="25"></reconnect>
     </db:generic-config>
     <http:request-config  name="PID_webservice" host="${pid.host}" port="${pid.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="30000"/>
     <ftp:connector streaming="true" name="FTP" pollingFrequency="1000" validateConnections="true" doc:name="FTP"></ftp:connector>
@@ -51,8 +51,14 @@ http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/m
 		<flow-ref name="get_original_metadata_from_sidecar" doc:name="get_original_metadata_from_sidecar"/>
                 <flow-ref name="get_new_pid" doc:name="get_new_pid"/>
                 <flow-ref name="map_metadata" doc:name="map_metadata"/>
-                <flow-ref name="check_if_audio" doc:name="check_if_audio"/>
-                <flow-ref name="check_aspect_ratio" doc:name="check_aspect_ratio"/>
+                <choice doc:name="When original CP is VRT check AR">
+                    <when expression="#[flowVars.original_cp_id == &quot;OR-rf5kf25&quot;]">
+                        <flow-ref name="check_aspect_ratio" doc:name="check_aspect_ratio"/>
+                    </when>
+                    <otherwise>
+                        <expression-component doc:name="Do nothing"><![CDATA[// Do nothing]]></expression-component>
+                    </otherwise>
+                </choice>
                 <flow-ref name="transfer_files" doc:name="transfer_files"/>
             </when>
             <otherwise>
@@ -108,7 +114,7 @@ if (matcher.matches()) {
 }]]></expression-component>
     </sub-flow>
     <sub-flow name="check_filename_special_characters">
-        <set-variable variableName="filename_contains_bad_characters" value="#[flowVars.filename.matches(&quot;.*[()#&#235;].*&quot;)]" doc:name="Set filename_contains_bad_characters (e.g.: ()#)"/>
+        <set-variable variableName="filename_contains_bad_characters" value="#[flowVars.filename.matches(&quot;.*[\\[\\]()#&#235;&#228;+%&#233;&#8217;].*&quot;)]" doc:name="Set filename_contains_bad_characters (e.g.: ()#&#235;+%)"/>
         <set-variable variableName="state" value="BAD_CHAR_CHECKED" doc:name="Set state (BAD_CHAR_CHECKED)"/>
         <until-successful maxRetries="5" synchronous="true" millisBetweenRetries="5000" doc:name="Until Successful">
             <flow-ref name="create_es_message" doc:name="create_es_message"/>
@@ -116,7 +122,7 @@ if (matcher.matches()) {
         <logger message="BAD_CHAR_CHECKED: #[flowVars.filename_contains_bad_characters]" level="INFO" doc:name="BAD_CHAR_CHECKED"/>
     </sub-flow>
     <sub-flow name="move_files_for_correct_name">
-        <set-variable variableName="filename_corrected" value="#[flowVars.filename.replaceAll(&quot;\\(&quot;,&quot; &quot;).replaceAll(&quot;\\)&quot;,&quot; &quot;).replaceAll(&quot;#&quot;,&quot; &quot;).trim()]" doc:name="Set filename_corrected"/>
+        <set-variable variableName="filename_corrected" value="#[flowVars.filename.replaceAll(&quot;\\(&quot;,&quot; &quot;).replaceAll(&quot;\\)&quot;,&quot; &quot;).replaceAll(&quot;#&quot;,&quot; &quot;).replaceAll(&quot;&#235;&quot;,&quot;e&quot;).replaceAll(&quot;&#228;&quot;,&quot;a&quot;).replaceAll(&quot;&#233;&quot;,&quot;e&quot;).replaceAll(&quot;\\+&quot;,&quot;&quot;).replaceAll(&quot;\\%&quot;,&quot;&quot;).replaceAll(&quot;&#8217;&quot;,&quot;&quot;).replaceAll(&quot;\\[&quot;,&quot; &quot;).replaceAll(&quot;\\]&quot;,&quot; &quot;).trim()]" doc:name="Set filename_corrected"/>
         <set-variable variableName="destinationpath" value="#['/export/home/viaa/incoming/naarAVO']" doc:name="Set destinationpath to naarAVO"/>
         <dw:transform-message doc:name="Build move request for sidecar">
             <dw:input-variable variableName="currentItem"/>
@@ -168,7 +174,7 @@ if (matcher.matches()) {
     </sub-flow>
     <sub-flow name="get_original_metadata_from_sidecar">
 	    <mulerequester:request resource="#[&quot;ftp://&quot;+flowVars.username+&quot;:&quot;+flowVars.password+&quot;@&quot;+flowVars.host+&quot;/&quot;+flowVars.filepath+&quot;/&quot;+flowVars.filename+&quot;.xml?connector=FTP&quot;]" timeout="10000" throwExceptionOnTimeout="true" doc:name="Read sidecar"/>
-        <!-- 
+        <!--
         <sftplite:get-file filePath="#[flowVars.filepath+&quot;/&quot;+flowVars.filename + &quot;.xml&quot;]" hostName="#[flowVars.host]" password="#[flowVars.password]" userName="#[flowVars.username]" doc:name="SFTPLite"/>
         -->
         <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
@@ -178,10 +184,12 @@ if (matcher.matches()) {
 %output application/xml
 ---
 {
-    MediaHAVEN_external_metadata: payload.mets.dmdSec.mdWrap.xmlData.MediaHAVEN_external_metadata    
+    MediaHAVEN_external_metadata: payload.mets.dmdSec.mdWrap.xmlData.MediaHAVEN_external_metadata when payload.mets.dmdSec.mdWrap.xmlData.MediaHAVEN_external_metadata?
+    	otherwise payload.MediaHAVEN_external_metadata
 }]]></dw:set-payload>
         </dw:transform-message>
         <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
+        <set-variable variableName="is_audio" value="#[xpath3('//MimeType/text()').contains(&quot;audio&quot;)]" doc:name="Set is_audio (from mime_type inside technical metadata)"/>
         <dw:transform-message doc:name="Make simpler version (disgarding extra metadata features of MH 17.1)">
             <dw:input-payload doc:sample="sample_data/empty_1.xml"/>
             <dw:set-payload><![CDATA[%dw 1.0
@@ -200,10 +208,14 @@ if (matcher.matches()) {
         <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
         <set-variable variableName="original_metadata" value="#[payload]" doc:name="Set original_metadata with MHEM"/>
         <set-variable variableName="original_pid" value="#[xpath3('//PID/text()')]" doc:name="Set original_pid"/>
-        <set-variable variableName="original_cp" value="#[xpath3('//CP/text()')]" doc:name="Set original_cp"/>
+        <set-variable variableName="original_cp" value="#[xpath3('//Original_CP/text()') == &quot;&quot; ? xpath3('//CP/text()') : xpath3('//Original_CP/text()')]" doc:name="Set original_cp (re-use when already filled in)"/>
         <set-variable variableName="original_md5" value="#[xpath3('//md5_viaa/text()')]" doc:name="Set original_md5"/>
-        <set-variable variableName="original_cp_id" value="#[xpath3('//CP_id/text()')]" doc:name="Set original_cp_id"/>
+        <set-variable variableName="original_cp_id" value="#[xpath3('//Original_CP_id/text()') == &quot;&quot; ? xpath3('//CP_id/text()') : xpath3('//Original_CP_id/text()')]" doc:name="Set original_cp_id"/>
         <set-variable variableName="original_ingestspacename" value="#[xpath3('//ingestspacename/text()')]" doc:name="Set original_ingestspacename"/>
+        <set-variable variableName="original_department" value="#[xpath3('//Department/text()')]" doc:name="Set original_department"/>
+        <set-variable variableName="original_isiningestspace" value="#[xpath3('//isiningestspace/text()')]" doc:name="Set original_isiningestspace"/>
+        <set-variable variableName="bestandsnaam" value="#[xpath3('//bestandsnaam/text()')]" doc:name="Set original_bestandsnaam"/>
+        <set-variable variableName="original_dc_source" value="#[xpath3('//dc_source/text()')]" doc:name="Set original_dc_source"/>
         <set-variable variableName="briefing_ids" value="#[xpath3(&quot;/string-join(//BriefingID[not(@type='list')]/text(), ' ')&quot;)]" doc:name="Set briefing_ids as text field for logging"/>
         <set-variable variableName="briefing_ids " value="#[flowVars.briefing_ids.replaceAll(&quot;\n&quot;,&quot;&quot;).trim().replaceAll(&quot;        &quot;,&quot; &quot;)]" doc:name="Rewrite briefing_ids without leading and trailing whitespace"/>
         <set-variable variableName="state" value="MD_OBTAINED" doc:name="Set state (MD_OBTAINED)"/>
@@ -227,7 +239,7 @@ if (matcher.matches()) {
         <set-payload value="#[flowVars.original_metadata]" doc:name="Set Payload with original_metadata"/>
         <mulexml:dom-to-xml-transformer doc:name="DOM to XML (because it needs to an object and not a string)"/>
         <dw:transform-message metadata:id="0118c471-3028-463b-a667-7e79cd43bf6a" doc:name="Create adapted metadata">
-            <dw:input-payload doc:sample="sample_data/empty.xml"/>
+            <dw:input-payload />
             <dw:input-variable variableName="metadata_no_root"/>
             <dw:input-variable variableName="generated_pid"/>
             <dw:input-variable doc:sample="sample_data\empty_2.xml" variableName="pid"/>
@@ -245,62 +257,78 @@ if (matcher.matches()) {
 		)),
 		"MDProperties": {
 			(payload.MediaHAVEN_external_metadata.*MDProperties map (
-				$
-			)),
+            $ mapObject (
+                '$$' @(($.@ default {} mapObject { '$$': $ })): $ when '$$' != 'dc_identifier_localids' otherwise {
+                    (
+                        $ mapObject (
+                        '$$' @(($.@ default {} mapObject { '$$': $ })): $
+                        )
+                    ),
+                    bestandsnaam: flowVars.filename ++ "." ++ flowVars.extension
+                }
+            ))),
+           	("dc_identifier_localids" @(type: "list"): {
+            	bestandsnaam: flowVars.source_filename
+            }) when payload.MediaHAVEN_external_metadata.MDProperties."dc_identifier_localids" == null,
+			dc_source: flowVars.filename ++ "." ++ flowVars.extension,
 			// Original CP
-			Original_CP: flowVars.original_cp,
+			(Original_CP: flowVars.original_cp) when payload.MediaHAVEN_external_metadata.MDProperties.Original_CP == null,
 			// Original CP ID
-			Original_CP_id: p('vrt.ldap_id'),
+			(Original_CP_id: flowVars.original_cp_id) when payload.MediaHAVEN_external_metadata.MDProperties.Original_CP == null,
 			// Add relation to original PID
-			"dc_relations" @(type: "list"): {
+			("dc_relations" @(type: "list"): {
 				is_verwant_aan: flowVars.original_pid
-			}
+			}) when payload.MediaHAVEN_external_metadata.MDProperties.Original_CP == null
 		}
 	}
 }]]></dw:set-payload>
         </dw:transform-message>
         <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
-        <set-variable variableName="new_metadata" value="#[payload.replaceAll('&lt;PID&gt;'+flowVars.original_pid+'&lt;/PID&gt;', '&lt;PID&gt;'+flowVars.new_pid+'&lt;/PID&gt;').replaceAll('&lt;CP&gt;'+flowVars.original_cp+'&lt;/CP&gt;', '&lt;CP&gt;testbeeld&lt;/CP&gt;').replaceAll('&lt;CP_id&gt;'+flowVars.original_cp_id+'&lt;/CP_id&gt;', '&lt;CP_id&gt;OR-h41jm1d&lt;/CP_id&gt;').replaceAll('&lt;md5&gt;'+flowVars.original_md5+'&lt;/md5&gt;', '').replaceAll('&lt;md5_viaa&gt;'+flowVars.original_md5+'&lt;/md5_viaa&gt;', '').replaceAll('&lt;ingestspacename&gt;'+flowVars.original_ingestspacename+'&lt;/ingestspacename&gt;', '').replaceAll('    \n', '')]" doc:name="Set new_metadata by replacing PID, CP and CP_id and deleting MD5 and ingestspacename"/>
+        <set-variable variableName="new_metadata" value="#[payload.replaceAll('&lt;PID&gt;'+flowVars.original_pid+'&lt;/PID&gt;', '&lt;PID&gt;'+flowVars.new_pid+'&lt;/PID&gt;').replaceAll('&lt;CP&gt;'+flowVars.original_cp+'&lt;/CP&gt;', '&lt;CP&gt;testbeeld&lt;/CP&gt;').replaceAll('&lt;CP_id&gt;'+flowVars.original_cp_id+'&lt;/CP_id&gt;', '&lt;CP_id&gt;OR-h41jm1d&lt;/CP_id&gt;').replaceAll('&lt;md5&gt;'+flowVars.original_md5+'&lt;/md5&gt;', '').replaceAll('&lt;md5_viaa&gt;'+flowVars.original_md5+'&lt;/md5_viaa&gt;', '').replaceAll('&lt;ingestspacename&gt;'+flowVars.original_ingestspacename+'&lt;/ingestspacename&gt;', '').replaceAll('&lt;Department&gt;'+flowVars.original_department+'&lt;/Department&gt;', '').replaceAll('&lt;isiningestspace&gt;'+flowVars.original_isiningestspace+'&lt;/isiningestspace&gt;', '').replaceAll('&lt;dc_source&gt;'+flowVars.original_dc_source+'&lt;/dc_source&gt;', '').replaceAll('    \n', '')]" doc:name="Set new_metadata by replacing PID, CP and CP_id and deleting MD5, ingestspacename, department, isiningestspace and original dc_source"/>
         <set-variable variableName="state" value="#[&quot;METADATA_MAPPED&quot;]" doc:name="Set state (METADATA_MAPPED)"/>
         <until-successful maxRetries="5" synchronous="true" millisBetweenRetries="5000" doc:name="Until Successful">
             <flow-ref name="create_es_message" doc:name="create_es_message"/>
         </until-successful>
         <logger message="METADATA MAPPED" level="INFO" doc:name="METADATA MAPPED"/>
     </sub-flow>
-    <sub-flow name="check_if_audio">
-        <db:select config-ref="Borndigital" doc:name="Query vrt buffer to see which type of essence">
-            <db:parameterized-query><![CDATA[select *
-from ${db.buffer}
-where pid = #[flowVars.original_pid] AND event_name = 'audioEssenceAvailableEvent']]></db:parameterized-query>
-        </db:select>
-        <set-variable variableName="is_audio" value="#[payload.size()&gt;0]" doc:name="Set is_audio"/>
-    </sub-flow>
     <sub-flow name="check_aspect_ratio">
-        <choice doc:name="No check when audio">
-            <when expression="#[flowVars.is_audio.equals(true) || extension.equals('WAV') || flowVars.extension.equals('wav')]">
-                <set-variable variableName="is_aspect_ratio_correct" value="#[true]" doc:name="Set is_aspect_ratio_correct TRUE for audio"/>
+        <set-variable variableName="comesFromTestbeeld" value="#[xpath3('//Original_CP', flowVars.original_metadata) != &quot;&quot;]" doc:name="Set comesFromTestbeeld"/>
+        <choice doc:name="No check when audio or comes again from testbeeld">
+            <when expression="#[flowVars.is_audio.equals(true) || extension.equals('WAV') || flowVars.extension.equals('wav') || flowVars.comesFromTestbeeld.equals(true)]">
+                <set-variable variableName="is_aspect_ratio_correct" value="#[true]" doc:name="Set is_aspect_ratio_correct TRUE"/>
+                <set-variable variableName="profile" value="avo" doc:name="Set profile to avo (otherwise mule gives null pointer later)"/>
             </when>
             <otherwise>
-                <http:request config-ref="Aspect_ratio_API" path="#['/vrt/' + flowVars.original_pid]" method="GET" doc:name="Request aspect ratios of the original (vrt) pid to see difference between metadata and essence"/>
+                <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
+                    <http:request config-ref="Aspect_ratio_API" path="#['/vrt/' + flowVars.original_pid]" method="GET" doc:name="Request aspect ratios of the original (vrt) pid to see difference between metadata and essence"/>
+                </until-successful>
                 <byte-array-to-string-transformer doc:name="Byte Array to String"/>
                 <json:json-to-object-transformer doc:name="JSON to Object"/>
                 <set-variable variableName="aspect_ratio_essence" value="#[payload.get('data').get('aspect_ratio_essence').toString().replaceAll('&quot;','')]" doc:name="Set aspect_ratio_essence"/>
                 <set-variable variableName="aspect_ratio_metadata" value="#[payload.get('data').get('aspect_ratio_metadata').toString().replaceAll('&quot;','')]" doc:name="Set aspect_ratio_metadata"/>
                 <set-variable variableName="is_aspect_ratio_correct" value="#[flowVars.aspect_ratio_essence.equals(flowVars.aspect_ratio_metadata)]" doc:name="Set is_aspect_ratio_correct"/>
+                <set-variable variableName="height" value="#[payload.get('data').get('hires_height').toString().replaceAll('&quot;','')]" doc:name="Set height"/>
+                <choice doc:name="Choice">
+			        <when expression="#[flowVars.height != null &amp;&amp; (flowVars.height == (576+32) || flowVars.height == (1080+32))]">
+				        <set-variable variableName="profile" value="avo_crop_top" doc:name="Set profile to avo_crop_top"/>
+			        </when>
+			        <otherwise>
+				        <set-variable variableName="profile" value="avo" doc:name="Set profile to avo"/>
+			        </otherwise>
+		        </choice>
             </otherwise>
         </choice>
-        <set-variable variableName="state" value="#[&quot;ASPECT_RATIO_CHECK&quot;]" doc:name="Set state (ASPECT_RATIO_CHECK)"/>
-        <until-successful maxRetries="5" synchronous="true" millisBetweenRetries="5000" doc:name="Until Successful">
-            <flow-ref name="create_es_message" doc:name="create_es_message"/>
+        <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
+            <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
         </until-successful>
         <logger message="ASPECT RATIO CHECKED" level="INFO" doc:name="ASPECT RATIO CHECKED"/>
     </sub-flow>
     <sub-flow name="transfer_files">
         <set-payload value="#[flowVars.new_metadata]" doc:name="Set Payload with new_metadata"/>
         <ftp:outbound-endpoint host="${ftpDestination.host}" port="21" responseTimeout="10000" doc:name="Export new sidecar to destination" password="${ftpDestination.password}" path="${ftpDestination.path}" user="${ftpDestination.username}" connector-ref="FTP" outputPattern="#[flowVars.new_pid + &quot;.xml&quot;]"/>
-        <choice doc:name="Is the aspect ratio of the essence correct?">
-            <when expression="#[flowVars.is_aspect_ratio_correct == false]">
-                <logger message="ARs are not equal, use the" level="INFO" doc:name="Aspect ratio is not correct, send request to transcoder"/>
+        <choice doc:name="Is (the aspect ratio of the essence correct OR not from VRT) or does the file need to be cropped?">
+            <when expression="#[flowVars.original_cp_id == &quot;OR-rf5kf25&quot; &amp;&amp; (flowVars.is_aspect_ratio_correct == false || flowVars.profile.equals(&quot;avo_crop_top&quot;))]">
+                <logger message="ARs are not equal, use the transcoder" level="INFO" doc:name="Aspect ratio is not correct, send request to transcoder"/>
                 <dw:transform-message doc:name="Create transcoder request which includes FXP">
                     <dw:set-payload><![CDATA[%dw 1.0
 %output application/json
@@ -320,7 +348,7 @@ where pid = #[flowVars.original_pid] AND event_name = 'audioEssenceAvailableEven
 	dest_server_pass: p('ftpDestination.password'),
 	
 	crop: true,
-	format: "avo", // must be retranscoded
+	format: flowVars.profile, // must be retranscoded
 	height: "480",
 	aspect: flowVars.aspect_ratio_metadata when (flowVars.aspect_ratio_metadata != 'unknown' and flowVars.aspect_ratio_metadata != '"unknown"') 
 			otherwise (flowVars.aspect_ratio_essence when (flowVars.aspect_ratio_essence != 'unknown' and flowVars.aspect_ratio_essence != '"unknown"')
@@ -393,8 +421,11 @@ where pid = #[flowVars.original_pid] AND event_name = 'audioEssenceAvailableEven
 {
 	state: flowVars.state,
 	timestamp:  now as :datetime {format: "yyyy-MM-dd'T'HH:mm:ss.SSSZ"},
-	(tenant: flowVars.tenant) when flowVars.tenant != null,
+	(original_cp: flowVars.original_cp) when flowVars.original_cp != null,
+	(original_cp_id: flowVars.original_cp_id) when flowVars.original_cp_id != null,
+	(original_md5: flowVars.original_md5) when flowVars.original_md5 != null,
 	(filename: flowVars.filename) when flowVars.filename != null,
+	(extension: flowVars.extension) when flowVars.extension != null,
 	(filepath: flowVars.filepath) when flowVars.filepath != null,
 	(host: flowVars.host) when flowVars.host != null,
 	(briefing_ids: flowVars.briefing_ids) when flowVars.briefing_ids != null,
@@ -407,6 +438,7 @@ where pid = #[flowVars.original_pid] AND event_name = 'audioEssenceAvailableEven
 	(end_time: flowVars.endTime) when flowVars.endTime?,
 	(aspect_ratio_essence: flowVars.aspect_ratio_essence) when flowVars.aspect_ratio_essence != null,
 	(aspect_ratio_metadata: flowVars.aspect_ratio_metadata) when flowVars.aspect_ratio_metadata != null,
+	(is_audio: flowVars.is_audio) when flowVars.is_audio != null,
 	(is_aspect_ratio_correct: flowVars.is_aspect_ratio_correct) when flowVars.is_aspect_ratio_correct != null,
 	(filename_contains_bad_characters: flowVars.filename_contains_bad_characters) when flowVars.filename_contains_bad_characters != null
 }]]></dw:set-payload>

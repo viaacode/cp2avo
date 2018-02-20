@@ -21,8 +21,6 @@ elastic.host=
 elastic.port=
 elastic.path=
 
-vrt.ldap_id=
-
 aspect_ratio_api.host=
 aspect_ratio_api.port=
 
