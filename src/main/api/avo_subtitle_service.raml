@@ -1,0 +1,103 @@
+#%RAML 0.8
+title: avo_subtitle_service
+version: 1.0.0
+documentation: 
+ - title: AVO Subtitle API
+   content: This API allows the export of subtitles for video files/fragments based on start & end times.
+
+/avo_import_export/{new_pid}:
+  description: Get data by pid
+  uriParameters:
+    new_pid:
+      displayName: New PID
+      description: PID in TESTBEELD
+      example: 8k74t6zw3z
+      pattern: "[A-Za-z0-9]{10,12}"
+      maxLength: 12
+  get:
+    responses:
+      200:
+        description: Data was succesfully retrieved.
+        body:
+          application/json:
+            example: |
+              {
+                "status": "OK",
+                "message": "Data was succesfully retrieved",
+                "data": {
+                  "state": "SIP_DELIVERED",
+                  "timestamp": "2016-11-14T08:26:58.286+0100",
+                  "filename": "De vrije markt P2016 A0021_10000000-10284416",
+                  "filepath": "/export/home/viaa/incoming/naarAVO/Processing",
+                  "host": "do-prd-ftp-v1.do.viaa.be",
+                  "briefing_ids": "8b255d91-995a-4797-92a6-2a8d100fa4bc",
+                  "original_pid": "v40js9t21t",
+                  "new_pid": "8k74t6zw3z",
+                  "start_time": "10000000",
+                  "end_time": "10284416",
+                  "title": "TEST TITEL IS HIER"
+                }
+              }
+      404:
+        description: Data couldn't be found for this PID.
+        body:
+          application/json:
+            example: |
+              {
+                "status" : "NOK",
+                "message" : "Data couldn't be found for this PID",
+                "data" : {
+                  "pid" : "8k74t6zw3z"
+                }
+              }
+      500:
+          description: There was a problem while processing the request.
+          body:
+            application/json:
+              example: |
+                {
+                  "status" : "NOK",
+                  "message" : "There was a problem while processing the request",
+                  "data" : {
+                    "pid": "8k74t6zw3z"
+                  }
+                }
+/subtitle/export:
+  description: Export a subtitle to Mediamosa
+  post:
+    body:
+      application/json:
+        example: |
+          {
+            "new_pid" : "8k74t6zw3z",
+            "mediamosa_id" : "abc12345",
+            "starttime": "10000000",
+            "endtime" : "10262113",
+            "email": "email@email.email"
+          }
+    responses:
+      200:
+        description: Process was successfully started.
+        body:
+          application/json:
+            example: |
+              {
+                "status" : "OK",
+                "message" : "Process was successfully started",
+                "data" : {
+                  "pid" : "8k74t6zw3z",
+                  "mediamosa_id" : "abc12345",
+                  "starttime": "10000000",
+                  "endtime" : "10262113",
+                  "email": "email@email.email"
+                }
+              }
+      500:
+        description: There was a problem while processing the request.
+        body:
+          application/json:
+            example: |
+              {
+                "status" : "NOK",
+                "message" : "There was a problem while processing the request"
+              }

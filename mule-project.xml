@@ -2,6 +2,9 @@
 <mule-project xmlns="http://www.mulesoft.com/tooling/project" runtimeId="org.mule.tooling.server.3.7.4.ee" schemaVersion="5.3.0.0">
     <name>cp2avo</name>
     <description></description>
-    <muleExtension name="Mule Requester" qualifier="org.mule.tooling.ui.contribution.mulerequester.3.5.0"/>
     <muleExtension name="AMQP-0-9" qualifier="mule-transport-amqp-contribution"/>
+    <muleExtension name="Mule Requester" qualifier="org.mule.tooling.ui.contribution.mulerequester.3.5.0"/>
+    <muleExtension name="Amazon SQS" qualifier="org.mule.tooling.ui.contribution.sqs.3.5.0"/>
+    <muleExtension name="APIkit" qualifier="org.mule.tooling.apikit.3.7.0"/>
+    <muleExtension name="SFTPLite" qualifier="org.mule.tooling.ui.contribution.sftplite.3.5.0"/>
 </mule-project>

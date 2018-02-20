@@ -1,0 +1,445 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:smtp="http://www.mulesoft.org/schema/mule/smtp" xmlns:ftp="http://www.mulesoft.org/schema/mule/ee/ftp"
+	xmlns:mulerequester="http://www.mulesoft.org/schema/mule/mulerequester" xmlns:sftplite="http://www.mulesoft.org/schema/mule/sftplite" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp"
+	xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting" xmlns:mulexml="http://www.mulesoft.org/schema/mule/xml" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:json="http://www.mulesoft.org/schema/mule/json"
+	xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:apikit="http://www.mulesoft.org/schema/mule/apikit" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/ftp http://www.mulesoft.org/schema/mule/ee/ftp/current/mule-ftp-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/apikit http://www.mulesoft.org/schema/mule/apikit/current/mule-apikit.xsd
+http://www.mulesoft.org/schema/mule/xml http://www.mulesoft.org/schema/mule/xml/current/mule-xml.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd
+http://www.mulesoft.org/schema/mule/sftplite http://www.mulesoft.org/schema/mule/sftplite/current/mule-sftplite.xsd
+http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema/mule/mulerequester/current/mule-mulerequester.xsd
+http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smtp/current/mule-smtp.xsd">
+    <http:listener-config name="avo_subtitle_service-httpListenerConfig" host="0.0.0.0" port="${api.port}" doc:name="HTTP Listener Configuration"/>
+    <smtp:gmail-connector name="gmailconfig" doc:name="Gmail"/>
+    <apikit:config name="avo_subtitle_service-config" raml="avo_subtitle_service.raml" consoleEnabled="true" doc:name="Router"/>
+    <http:request-config name="OAI_Connector" protocol="HTTPS" host="archief.viaa.be" port="443" basePath="/mediahaven-oai" doc:name="OAI Configuration" />
+    <smtp:connector name="SMTP" validateConnections="true" doc:name="SMTP"/>
+    
+    
+    <flow name="avo_subtitle_service-main">
+        <http:listener config-ref="avo_subtitle_service-httpListenerConfig" path="/api/*" doc:name="HTTP"/>
+        <apikit:router config-ref="avo_subtitle_service-config" doc:name="APIkit Router"/>
+        <exception-strategy ref="avo_subtitle_service-apiKitGlobalExceptionMapping" doc:name="Reference Exception Strategy"/>
+    </flow>
+    <flow name="avo_subtitle_service-console">
+        <http:listener config-ref="avo_subtitle_service-httpListenerConfig" path="/console/*" doc:name="HTTP"/>
+        <apikit:console config-ref="avo_subtitle_service-config" doc:name="APIkit Console"/>
+    </flow>
+    <flow name="get:/avo_import_export/{new_pid}:avo_subtitle_service-config">
+        <set-variable variableName="pid" value="#[flowVars.'new_pid']" doc:name="Set pid"/>
+        <flow-ref name="get_data_from_es_by_new_pid" doc:name="get_data_from_es_by_new_pid"/>
+        <enricher target="#[flowVars.title]" doc:name="Message Enricher">
+            <flow-ref name="extract_title" doc:name="extract_title"/>
+        </enricher>
+        <flow-ref name="parse_simplefilename" doc:name="parse_simplefilename"/>
+        <flow-ref name="construct_response" doc:name="construct_response"/>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+                <dw:transform-message doc:name="Create Response">
+            <dw:input-payload doc:sample="sample_data/json_1.json"/>
+            <dw:input-variable doc:sample="sample_data/MyPojo_1.dwl" variableName="title"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	status: 'NOK',
+	message: 'No information was found for this pid'
+}]]></dw:set-payload>
+        </dw:transform-message>
+        </catch-exception-strategy>
+    </flow>
+    <flow name="post:/subtitle/export:avo_subtitle_service-config">
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+        <set-variable variableName="pid" value="#[payload.new_pid]" doc:name="Set pid"/>
+        <set-variable variableName="mediamosa_id" value="#[payload.mediamosa_id]" doc:name="Set mediamosa_id"/>
+        <set-variable variableName="starttime" value="#[payload.starttime]" doc:name="Set starttime"/>
+        <set-variable variableName="endtime" value="#[payload.endtime]" doc:name="Set endtime"/>
+        <set-variable variableName="email" value="#[payload.email]" doc:name="Set email"/>
+        <async doc:name="Async">
+            <enricher target="#[flowVars.esData]" doc:name="Set esData">
+                <flow-ref name="get_data_from_es_by_new_pid" doc:name="get_data_from_es_by_new_pid"/>
+            </enricher>
+            <set-variable variableName="state" value="SUBTITLE_REQUESTED" doc:name="Set state (SUBTITLE_REQUESTED)"/>
+            <flow-ref name="create_subtitle_es_message" doc:name="create_subtitle_es_message"/>
+            <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+            <flow-ref name="check_ot_existence" doc:name="check_ot_existence"/>
+            <flow-ref name="export_response_handler" doc:name="export_response_handler"/>
+        </async>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+  "status" : "OK",
+  "message" : "Process was successfully started",
+  "data" : {
+    "pid" : flowVars.pid,
+    ("mediamosa_id" : flowVars.mediamosa_id) when flowVars.mediamosa_id?,
+    "starttime": flowVars.starttime,
+    "endtime" : flowVars.endtime
+  }
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <catch-exception-strategy doc:name="Catch Exception Strategy">
+                <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+  "status" : "NOK",
+  "message" : "An error occurred",
+  "data" : {
+    "pid" : flowVars.pid,
+    ("mediamosa_id" : flowVars.mediamosa_id) when flowVars.mediamosa_id?,
+    "starttime": flowVars.starttime,
+    "endtime" : flowVars.endtime
+  }
+}]]></dw:set-payload>
+        </dw:transform-message>
+        </catch-exception-strategy>
+    </flow>
+    <apikit:mapping-exception-strategy name="avo_subtitle_service-apiKitGlobalExceptionMapping">
+        <apikit:mapping statusCode="404">
+            <apikit:exception value="org.mule.module.apikit.exception.NotFoundException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Resource not found&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="404">
+            <apikit:exception value="java.util.NoSuchElementException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <dw:transform-message doc:name="Transform Message">
+                <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	status: 'NOK',
+	message : 'Data couldn\'t be found for this PID',
+	data: {
+		pid: flowVars.pid
+	}
+}]]></dw:set-payload>
+            </dw:transform-message>
+        </apikit:mapping>
+        <apikit:mapping statusCode="405">
+            <apikit:exception value="org.mule.module.apikit.exception.MethodNotAllowedException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Method not allowed&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="415">
+            <apikit:exception value="org.mule.module.apikit.exception.UnsupportedMediaTypeException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Unsupported media type&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="406">
+            <apikit:exception value="org.mule.module.apikit.exception.NotAcceptableException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Not acceptable&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="400">
+            <apikit:exception value="org.mule.module.apikit.exception.BadRequestException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Bad request&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="500">
+            <apikit:exception value="java.lang.RuntimeException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <dw:transform-message doc:name="Transform Message">
+                <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	status: 'NOK',
+	message : 'There was a problem while processing the request',
+	data: {
+		pid: flowVars.pid
+	}
+}]]></dw:set-payload>
+            </dw:transform-message>
+        </apikit:mapping>
+    </apikit:mapping-exception-strategy>
+    <sub-flow name="get_first_result">
+        <choice doc:name="Did ES return results?">
+            <when expression="#[payload.hits.total &lt;= 0]">
+                <logger message="ES did not return any results for #[flowVars.'new_pid']" level="INFO" doc:name="No - ES did not return any results for [PID]"/>
+                <set-property propertyName="http.status" value="404" doc:name="Set http.status to 404"/>
+                <scripting:component doc:name="throw new java.util.NoSuchElementException">
+                    <scripting:script engine="Groovy"><![CDATA[throw new java.util.NoSuchElementException("");]]></scripting:script>
+                </scripting:component>
+            </when>
+            <otherwise>
+                <logger message="ES returned #[payload.hits.total] results for #[flowVars.'new_pid']" level="INFO" doc:name="Yes - ES returned X results for [PID]"/>
+                <set-payload value="#[payload.hits.hits[0]._source]" doc:name="Set Payload To First Response"/>
+            </otherwise>
+        </choice>
+    </sub-flow>
+    <sub-flow name="extract_title">
+        <set-payload value="#[payload.original_metadata]" doc:name="Set Payload To Original Metadata"/>
+        <mulexml:dom-to-xml-transformer doc:name="DOM to XML"/>
+        <set-payload value="#[xpath3(&quot;//*[local-name()='title']/text()&quot;)]" doc:name="Set Payload To Title"/>
+    </sub-flow>
+    <sub-flow name="parse_simplefilename">
+            <set-variable variableName="regex" value="(.+)_([0-9]{8})-([0-9]{8})(_partial)?" doc:name="Set regex"/>
+        <expression-component doc:name="Extract start and end times"><![CDATA[java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(flowVars.regex).matcher(payload.filename);
+	if (matcher.matches()) {
+		// Group 2 is start time
+		flowVars.startTime = matcher.group(2);
+		// Group 3 is end time
+		flowVars.endTime = matcher.group(3);
+	}]]></expression-component>
+    </sub-flow>
+    <sub-flow name="create_subtitle_es_message">
+        <set-payload value="#[flowVars.esData]" doc:name="Set Payload to esData"/>
+        <dw:transform-message doc:name="Create ES Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	state: flowVars.state,
+	timestamp: now as :datetime {format: "yyyy-MM-dd'T'HH:mm:ss.SSSZ"},
+	tenant: payload.tenant,
+	filename: payload.filename,
+	filepath: payload.filepath,
+	host: payload.host,
+	briefing_ids: payload.briefing_ids,
+	briefing_title: payload.briefing_title,
+	original_pid: payload.original_pid,
+	new_pid: payload.new_pid,
+	start_time: flowVars.starttime,
+	end_time: flowVars.endtime,
+	mediamosa_id: flowVars.mediamosa_id,
+	email: flowVars.email
+}]]></dw:set-payload>
+        </dw:transform-message>
+    </sub-flow>
+    
+       <sub-flow name="check_ot_existence">
+        <set-variable variableName="original_pid" value="#[flowVars.esData.original_pid.split(&quot;_&quot;)[0]]" doc:name="Correct pid in case it has a version nr"/>
+        <db:select config-ref="Borndigital" doc:name="Get OTs for this pid from vrt_message_buffer">
+            <db:parameterized-query><![CDATA[SELECT * FROM ${db.buffer} WHERE pid LIKE #[flowVars.original_pid + '%'] AND event_name IN('closedOtAvailableEvent', 'openOtAvailableEvent') AND status IN('completed', 'delivered') ORDER BY reception_date DESC;]]></db:parameterized-query>
+        </db:select>
+        <choice doc:name="Are there any OTs available?">
+            <when expression="#[payload.size() &gt; 0]">
+                <logger message="Found one or more OTs" level="INFO" doc:name="Yes - Found one or more OTs"/>
+                <choice doc:name="Choice">
+                    <when expression="#[payload.size() == 1]">
+                        <logger message="Found just one OT. Using that one" level="INFO" doc:name="Found just one OT. Using that one"/>
+                        <set-variable variableName="query_filename" value="#[payload[0].pid + (payload[0].event_name.contains(&quot;open&quot;) ? &quot;_openOt&quot; : &quot;_closedOt&quot;)]" doc:name="Set query_filename"/>
+                    </when>
+                    <otherwise>
+                        <logger message="Found multiple OTs. Prefer openOT" level="INFO" doc:name="Found multiple OTs. Prefer openOT"/>
+                        <foreach doc:name="For Each">
+                            <choice doc:name="Choice">
+                                <when expression="#[payload.event_name.contains(&quot;open&quot;)]">
+                                    <set-variable variableName="query_filename" value="#[payload.pid + (payload.event_name.contains(&quot;open&quot;) ? &quot;_openOt&quot; : &quot;_closedOt&quot;)]" doc:name="Set query_filename"/>
+                                </when>
+                                <otherwise>
+                                    <expression-component doc:name="ClosedOT. Do nothing."><![CDATA[// Do nothing]]></expression-component>
+                                </otherwise>
+                            </choice>
+                        </foreach>
+                    </otherwise>
+                </choice>
+            </when>
+            <otherwise>
+                <logger message="Found no OTs for this file" level="INFO" doc:name="No - Found no OTs for this file"/>
+                <expression-component doc:name="Expression"><![CDATA[throw new be.viaa.exceptions.NoSubtitleFoundException("No subtitle was found for this file");]]></expression-component>
+            </otherwise>
+        </choice>
+        <enricher target="#[payload]" doc:name="Message Enricher">
+            <flow-ref name="get_subtitle_from_oai" doc:name="get_subtitle_from_oai"/>
+        </enricher>
+    </sub-flow>
+    <sub-flow name="get_subtitle_from_oai">
+    <http:request config-ref="OAI_Connector" path="/oai?verb=GetRecord&amp;metadataPrefix=mets&amp;identifier=noid:{noid}" method="GET" doc:name="Get subtitle from OAI">
+                        <http:request-builder>
+                <http:uri-param paramName="noid" value="#[flowVars.query_filename]"/>
+                <http:header headerName="Authorization" value="${mh.auth}"/>
+                        </http:request-builder>
+  	</http:request>
+        <mulexml:xml-to-dom-transformer doc:name="XML to DOM"/>
+        <set-variable variableName="requesturl" value="#[xpath3(&quot;//*[local-name()='file'][@USE='PRESERVATION']/*[local-name()='FLocat']/@*[local-name()='href']&quot;)]" doc:name="Set requesturl"/>
+        <choice doc:name="Choice">
+            <when expression="#[flowVars.requesturl == null || flowVars.requesturl == &quot;&quot;]">
+                <expression-component doc:name="Expression"><![CDATA[throw new be.viaa.exceptions.NoSubtitleFoundException("The OAI preservation url was not present.");]]></expression-component>
+            </when>
+            <otherwise>
+                <expression-component doc:name="We have a url. Do nothing"><![CDATA[// Do nothing]]></expression-component>
+            </otherwise>
+        </choice>
+        <mulerequester:request resource="#[flowVars.requesturl]" doc:name="Mule Requester"/>
+        <byte-array-to-string-transformer doc:name="Byte Array to String"/>
+    </sub-flow>
+    
+    <sub-flow name="construct_response">
+        <dw:transform-message doc:name="Create Response">
+            <dw:input-payload doc:sample="sample_data/json_1.json"/>
+            <dw:input-variable doc:sample="sample_data/MyPojo_1.dwl" variableName="title"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	status: 'OK',
+	message: 'Data was succesfully retrieved',
+	data: {
+		(payload mapObject (
+			{
+				('$$': $) when '$$' != 'original_metadata' and '$$' != 'new_metadata'
+			}
+		)),
+		title: flowVars.title,
+		start_time: flowVars.startTime,
+		end_time: flowVars.endTime
+	}
+}]]></dw:set-payload>
+        </dw:transform-message>
+    </sub-flow>
+    <sub-flow name="get_data_from_es_by_new_pid">
+        <dw:transform-message doc:name="Generate search request">
+            <dw:input-variable doc:sample="sample_data/MyPojo.dwl" variableName="oldPid"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	query: {
+		bool: {
+			must: [
+				{ match: { 'new_pid': flowVars.pid } },
+				{ match: { 'state': 'SIP_DELIVERED' } }
+			]
+		}
+	},
+	size: 1,
+	sort: { timestamp: { order: 'desc' }}
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <http:request config-ref="elastic_search" path="#['${elastic.index}']_search" method="POST" doc:name="Get PID from ES"/>
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+        <flow-ref name="get_first_result" doc:name="get_first_result"/>
+    </sub-flow>
+        <sub-flow name="get_data_from_es_by_old_pid">
+        <dw:transform-message doc:name="Generate search request">
+            <dw:input-variable doc:sample="sample_data/MyPojo.dwl" variableName="oldPid"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	query: {
+		bool: {
+			must: [
+				{ match: { 'original_pid': flowVars.pid } },
+				{ match: { state: 'SUBTITLE_REQUESTED' } }
+			]
+		}
+	},
+	size: 1,
+	sort: { timestamp: { order: 'desc' }}
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <http:request config-ref="elastic_search" path="#['${elastic.index}']_search" method="POST" doc:name="Get PID from ES"/>
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+        <flow-ref name="get_first_result" doc:name="get_first_result"/>
+    </sub-flow>
+    <flow name="export_response_handler">
+        <enricher target="#[flowVars.esData]" doc:name="Message Enricher">
+            <flow-ref name="get_data_from_es_by_new_pid" doc:name="get_data_from_es_by_new_pid"/>
+        </enricher>
+        <byte-array-to-string-transformer doc:name="Byte Array to String"/>
+        <set-payload value="#[payload.replace(&quot;&#65533;&quot;, &quot;&quot;).replaceAll(&quot;[\\x00-\\x09\\x11\\x12\\x14-\\x1F\\x7F]&quot;, &quot;&quot;)]" doc:name="Replace invalid characters (thanks, Windows)"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	start: flowVars.starttime,
+	end: flowVars.endtime,
+	correlationid: flowVars.pid,
+	data: payload as :string
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <amqp:outbound-endpoint queueName="${rabbit.vttcut.requestqueue}" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="AMQP-0-9"/>
+    </flow>
+    <flow name="cut_vtt_response_handler">
+        <amqp:inbound-endpoint queueName="${rabbit.vttcut.responsequeue}" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Listen for VTTCut Responses"/>
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+        <choice doc:name="Is the status 'OK'?">
+            <when expression="#[payload.response.status.equals(&quot;OK&quot;)]">
+                <logger level="INFO" doc:name="Yes - Status is 'OK'" message="Status is 'OK'"/>
+                <set-variable variableName="pid" value="#[payload.response.correlationid]" doc:name="Set pid"/>
+                <set-variable variableName="data" value="#[payload.response.data]" doc:name="Set data"/>
+                <dw:transform-message doc:name="Transform Message">
+                    <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	correlationid: flowVars.pid,
+	data: flowVars.data
+}]]></dw:set-payload>
+                </dw:transform-message>
+                <amqp:outbound-endpoint queueName="${rabbit.xiftovtt.requestqueue}" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="AMQP-0-9"/>
+                <amqp:acknowledge-message doc:name="AMQP-0-9 Acknowledge Message"/>
+            </when>
+            <otherwise>
+                <logger level="INFO" doc:name="No - Status is not 'OK'" message="Status is not 'OK'"/>
+            </otherwise>
+        </choice>
+    </flow>
+    <flow name="xif_to_vtt_response_handler">
+        <amqp:inbound-endpoint responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Listen for Xif to VTT Responses" queueName="${rabbit.xiftovtt.responsequeue}"/>
+        <json:json-to-object-transformer doc:name="JSON to Object" returnClass="java.util.HashMap"/>
+        <choice doc:name="Is the status 'OK'?">
+            <when expression="#[payload.response.status.equals(&quot;OK&quot;)]">
+                <logger message="Status is 'OK'" level="INFO" doc:name="Yes - Status is 'OK'"/>
+                <set-variable variableName="pid" value="#[payload.response.correlationid]" doc:name="Set pid"/>
+                <set-variable variableName="data" value="#[payload.response.data]" doc:name="Set data"/>
+                <enricher target="#[flowVars.esData]" doc:name="Message Enricher">
+                    <flow-ref name="get_data_from_es_by_new_pid_subtitleevent" doc:name="get_data_from_es_by_new_pid_subtitleevent"/>
+                </enricher>
+                <set-variable variableName="email" value="#[flowVars.esData.email]" doc:name="Set email"/>
+                <logger message="Sending email to #[flowVars.email]" level="INFO" doc:name="Logger"/>
+                <set-attachment attachmentName="#[flowVars.pid].vtt" value="#[flowVars.data]" contentType="text/plain" doc:name="Attachment"/>
+                <set-payload value="Your email with the attached subtitle has arrived for pid #[flowVars.pid]. See the attached file." doc:name="Set Payload"/>
+                <smtp:outbound-endpoint  connector-ref="SMTP" host="${smtp.host}" port="${smtp.port}"   to="#[flowVars.email]" from="support@viaa.be" subject="Subtitle arrived!" responseTimeout="10000" doc:name="SMTP"  />
+            </when>
+            <otherwise>
+                <logger message="Status is not 'OK'" level="INFO" doc:name="No - Status is not 'OK'"/>
+            </otherwise>
+        </choice>
+        <amqp:acknowledge-message doc:name="AMQP-0-9 Acknowledge Message"/>
+    </flow>
+    <sub-flow name="get_data_from_es_by_new_pid_subtitleevent">
+        <dw:transform-message doc:name="Generate search request">
+            <dw:input-variable doc:sample="sample_data/MyPojo.dwl" variableName="oldPid"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	query: {
+		bool: {
+			must: [
+				{ match: { 'new_pid': flowVars.pid } },
+				{ match: { 'state': 'SUBTITLE_REQUESTED' } }
+			]
+		}
+	},
+	size: 1,
+	sort: { timestamp: { order: 'desc' }}
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <http:request config-ref="elastic_search" path="#['${elastic.index}']_search" method="POST" doc:name="Get PID from ES"/>
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+        <flow-ref name="get_first_result" doc:name="get_first_result"/>
+    </sub-flow>
+</mule>
