@@ -17,7 +17,7 @@ http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/m
 http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd"> 
     <context:property-placeholder location="${mule.env}.properties"/>
      <db:generic-config name="Borndigital" url="jdbc:postgresql://${db.host}:${db.port}/${db.database}?password=${db.password}&amp;user=${db.username}" driverClassName="org.postgresql.Driver" doc:name="Borndigital DB">
-        <reconnect-forever></reconnect-forever>  
+        <reconnect-forever frequency="15000"/>
     </db:generic-config>
     <db:generic-config name="POSTGRESQL_Connection" url="jdbc:postgresql://${db.host}:${db.port}/${db.database}?password=${db.password}&amp;user=${db.username}" driverClassName="org.postgresql.Driver" doc:name="Generic Database Configuration">
         <reconnect frequency="5000" count="25"></reconnect>
@@ -27,7 +27,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
 <!--     <ftp:connector name="FTP"  validateConnections="true" doc:name="FTP" connectionTimeout="10000"/> -->
     <http:request-config name="elastic_search" host="${elastic.host}" port="${elastic.port}" basePath="${elastic.path}" doc:name="HTTP Request Configuration" responseTimeout="30000" />
     <amqp:connector name="AMQP_0_9_Connector" validateConnections="true" host="${rabbit.host}" username="${rabbit.username}" password="${rabbit.password}" ackMode="MANUAL" prefetchCount="1" numberOfChannels="2" doc:name="AMQP-0-9 Connector" priority="9">
-        <reconnect/>
+        <reconnect-forever frequency="15000"/>
     </amqp:connector>
     <http:request-config name="Aspect_ratio_API" host="${aspect_ratio_api.host}" port="${aspect_ratio_api.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="120000" connectionIdleTimeout="120000"/>
     <flow name="export_mam_avoFlow">
@@ -37,8 +37,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
 			connector-ref="AMQP_0_9_Connector"
 			doc:name="Get message from Export queue"
 			responseTimeout="10000"
-			numberOfChannels="1">
-            <reconnect-forever/>
+			numberOfChannels="1" queueDurable="true">
         </amqp:inbound-endpoint>
         <set-variable variableName="original_message" value="#[payload]" doc:name="Set original_message"/>
         <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
@@ -74,7 +73,6 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
             </until-successful>
             <set-payload value="#[flowVars.original_message]" doc:name="Set Payload to original_message"/>
             <amqp:outbound-endpoint queueName="avo_export_request_errors" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Send message to avo_export_request_errors">
-                <reconnect/>
             </amqp:outbound-endpoint>
             <amqp:acknowledge-message doc:name="AMQP-0-9 Acknowledge Message"/>
         </catch-exception-strategy>
@@ -143,7 +141,6 @@ if (matcher.matches()) {
         </dw:transform-message>
         <byte-array-to-string-transformer doc:name="Byte Array to String"/>
         <amqp:outbound-endpoint queueName="move_requests" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="Send message to move_requests">
-            <reconnect-forever/>
         </amqp:outbound-endpoint>
         <dw:transform-message doc:name="Build move request for essence">
             <dw:input-variable variableName="currentItem"/>
@@ -164,7 +161,6 @@ if (matcher.matches()) {
         </dw:transform-message>
         <byte-array-to-string-transformer doc:name="Byte Array to String"/>
         <amqp:outbound-endpoint queueName="move_requests" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="Send message to move_requests">
-            <reconnect-forever/>
         </amqp:outbound-endpoint>
         <set-variable variableName="state" value="FILES_MOVED" doc:name="Set state (FILES_MOVED)"/>
         <until-successful maxRetries="5" synchronous="true" millisBetweenRetries="5000" doc:name="Until Successful">
