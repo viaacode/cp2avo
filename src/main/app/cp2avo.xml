@@ -17,7 +17,7 @@ http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/m
 http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd"> 
     <context:property-placeholder location="${mule.env}.properties"/>
      <db:generic-config name="Borndigital" url="jdbc:postgresql://${db.host}:${db.port}/${db.database}?password=${db.password}&amp;user=${db.username}" driverClassName="org.postgresql.Driver" doc:name="Borndigital DB">
-        <reconnect-forever></reconnect-forever>  
+        <reconnect-forever frequency="15000"/>
     </db:generic-config>
     <db:generic-config name="POSTGRESQL_Connection" url="jdbc:postgresql://${db.host}:${db.port}/${db.database}?password=${db.password}&amp;user=${db.username}" driverClassName="org.postgresql.Driver" doc:name="Generic Database Configuration">
         <reconnect frequency="5000" count="25"></reconnect>
@@ -27,7 +27,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
 <!--     <ftp:connector name="FTP"  validateConnections="true" doc:name="FTP" connectionTimeout="10000"/> -->
     <http:request-config name="elastic_search" host="${elastic.host}" port="${elastic.port}" basePath="${elastic.path}" doc:name="HTTP Request Configuration" responseTimeout="30000" />
     <amqp:connector name="AMQP_0_9_Connector" validateConnections="true" host="${rabbit.host}" username="${rabbit.username}" password="${rabbit.password}" ackMode="MANUAL" prefetchCount="1" numberOfChannels="2" doc:name="AMQP-0-9 Connector" priority="9">
-        <reconnect/>
+        <reconnect-forever frequency="15000"/>
     </amqp:connector>
     <http:request-config name="Aspect_ratio_API" host="${aspect_ratio_api.host}" port="${aspect_ratio_api.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="120000" connectionIdleTimeout="120000"/>
     <flow name="export_mam_avoFlow">
@@ -37,8 +37,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
 			connector-ref="AMQP_0_9_Connector"
 			doc:name="Get message from Export queue"
 			responseTimeout="10000"
-			numberOfChannels="1">
-            <reconnect-forever/>
+			numberOfChannels="1" queueDurable="true">
         </amqp:inbound-endpoint>
         <set-variable variableName="original_message" value="#[payload]" doc:name="Set original_message"/>
         <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
@@ -74,7 +73,6 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
             </until-successful>
             <set-payload value="#[flowVars.original_message]" doc:name="Set Payload to original_message"/>
             <amqp:outbound-endpoint queueName="avo_export_request_errors" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Send message to avo_export_request_errors">
-                <reconnect/>
             </amqp:outbound-endpoint>
             <amqp:acknowledge-message doc:name="AMQP-0-9 Acknowledge Message"/>
         </catch-exception-strategy>
@@ -143,7 +141,6 @@ if (matcher.matches()) {
         </dw:transform-message>
         <byte-array-to-string-transformer doc:name="Byte Array to String"/>
         <amqp:outbound-endpoint queueName="move_requests" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="Send message to move_requests">
-            <reconnect-forever/>
         </amqp:outbound-endpoint>
         <dw:transform-message doc:name="Build move request for essence">
             <dw:input-variable variableName="currentItem"/>
@@ -164,7 +161,6 @@ if (matcher.matches()) {
         </dw:transform-message>
         <byte-array-to-string-transformer doc:name="Byte Array to String"/>
         <amqp:outbound-endpoint queueName="move_requests" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="Send message to move_requests">
-            <reconnect-forever/>
         </amqp:outbound-endpoint>
         <set-variable variableName="state" value="FILES_MOVED" doc:name="Set state (FILES_MOVED)"/>
         <until-successful maxRetries="5" synchronous="true" millisBetweenRetries="5000" doc:name="Until Successful">
@@ -319,7 +315,7 @@ if (matcher.matches()) {
             </otherwise>
         </choice>
         <until-successful maxRetries="5" synchronous="true" doc:name="Until Successful">
-            <flow-ref name="log_elastic_search" doc:name="log_elastic_search"/>
+            <flow-ref name="create_es_message" doc:name="create_es_message"/>
         </until-successful>
         <logger message="ASPECT RATIO CHECKED" level="INFO" doc:name="ASPECT RATIO CHECKED"/>
     </sub-flow>
@@ -334,31 +330,37 @@ if (matcher.matches()) {
 %output application/json
 ---
 {
-	"destpath": flowVars.filepath ++ "/tmp/",
-	
-	src_server: flowVars.host,
-	sourcefile: flowVars.filepath ++ '/' ++ flowVars.filename ++ "." ++ flowVars.extension,
-	src_server_login: flowVars.username,
-	src_server_pass: flowVars.password,
-	
-	dest_server: p('ftpDestination.host'),
-	dest_server_path: p('ftpDestination.path'),
-	dest_server_filename: flowVars.new_pid ++ ".mp4",
-	dest_server_login: p('ftpDestination.username'),
-	dest_server_pass: p('ftpDestination.password'),
-	
-	crop: true,
-	format: flowVars.profile, // must be retranscoded
-	height: "480",
-	aspect: flowVars.aspect_ratio_metadata when (flowVars.aspect_ratio_metadata != 'unknown' and flowVars.aspect_ratio_metadata != '"unknown"') 
-			otherwise (flowVars.aspect_ratio_essence when (flowVars.aspect_ratio_essence != 'unknown' and flowVars.aspect_ratio_essence != '"unknown"')
-			otherwise 'auto') // ffprobe will search for it when unknown
-		
-	// move: false
+    "requestor": "tina.cochet@viaa.be",
+    "correlation_id": "666.666.666",
+    "service": {
+        "transcoder": {
+            aspect: flowVars.aspect_ratio_metadata when (flowVars.aspect_ratio_metadata != 'unknown' and flowVars.aspect_ratio_metadata != '"unknown"') 
+				otherwise (flowVars.aspect_ratio_essence when (flowVars.aspect_ratio_essence != 'unknown' and flowVars.aspect_ratio_essence != '"unknown"')
+				otherwise 'auto'), // ffprobe will search for it when unknown
+            "crop": true,
+            "crop_top": false,
+            "profile": flowVars.profile,
+            "start_tc": "00:00:00.00",
+            "height": -1,
+            "width": 0,
+            "duration": ""
+        }
+    },
+    "input": {
+        "local_source": flowVars.filepath ++ '/' ++ flowVars.filename ++ "." ++ flowVars.extension
+    },
+    "destination": {
+        "ftp": {
+            "passwd": p('ftpDestination.password'),
+            "host": p('ftpDestination.host'),
+            "user": p('ftpDestination.username'),
+            "destpath": p('ftpDestination.path') ++ "/" ++ flowVars.new_pid ++ ".mp4"
+        }
+    }
 }]]></dw:set-payload>
                 </dw:transform-message>
                 <byte-array-to-string-transformer doc:name="Byte Array to String"/>
-                <amqp:outbound-endpoint queueName="transcoder_requests" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Send message to transcoder_requests"/>
+                <amqp:outbound-endpoint queueName="worker_input" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Send message to transcoder_requests"/>
             </when>
             <otherwise>
                 <logger level="INFO" doc:name="Aspect ratio is correct, send request to FXP"/>
@@ -383,7 +385,7 @@ if (matcher.matches()) {
 }]]></dw:set-payload>
                 </dw:transform-message>
                 <byte-array-to-string-transformer doc:name="Byte Array to String"/>
-		<amqp:outbound-endpoint queueName="${rabbit.fxp_requests}" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Send message to fxp_requests"/>
+		<amqp:outbound-endpoint queueName="fxp_requests" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Send message to fxp_requests"/>
             </otherwise>
         </choice>
         <set-variable variableName="state" value="#[&quot;SIP_DELIVERED&quot;]" doc:name="Set state (SIP_DELIVERED)"/>

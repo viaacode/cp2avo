@@ -25,7 +25,7 @@ http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema
 http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smtp/current/mule-smtp.xsd">
     <http:listener-config name="avo_subtitle_service-httpListenerConfig" host="0.0.0.0" port="${api.port}" doc:name="HTTP Listener Configuration"/>
     <smtp:gmail-connector name="gmailconfig" doc:name="Gmail"/>
-    <apikit:config name="avo_subtitle_service-config" raml="avo_subtitle_service.raml" consoleEnabled="true" doc:name="Router"/>
+    <apikit:config name="avo_subtitle_service-config" raml="api.raml" consoleEnabled="true" doc:name="Router"/>
     <http:request-config name="OAI_Connector" protocol="HTTPS" host="archief.viaa.be" port="443" basePath="/mediahaven-oai" doc:name="OAI Configuration" />
     <smtp:connector name="SMTP" validateConnections="true" doc:name="SMTP"/>
     
@@ -243,7 +243,7 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
                         <foreach doc:name="For Each">
                             <choice doc:name="Choice">
                                 <when expression="#[payload.event_name.contains(&quot;open&quot;)]">
-                                    <set-variable variableName="query_filename" value="#[payload.pid + (payload.event_name.contains(&quot;open&quot;) ? &quot;_openOt&quot; : &quot;_closedOt&quot;)]" doc:name="Set query_filename"/>
+                                    <set-variable variableName="query_filename" value="#[payload['pid'] + (payload.event_name.contains(&quot;open&quot;) ? &quot;_openOt&quot; : &quot;_closedOt&quot;)]" doc:name="Set query_filename"/>
                                 </when>
                                 <otherwise>
                                     <expression-component doc:name="ClosedOT. Do nothing."><![CDATA[// Do nothing]]></expression-component>
@@ -280,7 +280,8 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
             </otherwise>
         </choice>
         <mulerequester:request resource="#[flowVars.requesturl]" doc:name="Mule Requester"/>
-        <byte-array-to-string-transformer doc:name="Byte Array to String"/>
+        <byte-array-to-string-transformer doc:name="Byte Array to String" encoding="UTF-16LE"/>
+        <set-payload value="#[payload.replaceAll(&quot;&#57344;&quot;, &quot;&quot;)]" doc:name="Set Payload"/>
     </sub-flow>
     
     <sub-flow name="construct_response">
@@ -356,9 +357,10 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
         <enricher target="#[flowVars.esData]" doc:name="Message Enricher">
             <flow-ref name="get_data_from_es_by_new_pid" doc:name="get_data_from_es_by_new_pid"/>
         </enricher>
-        <byte-array-to-string-transformer doc:name="Byte Array to String"/>
-        <set-payload value="#[payload.replace(&quot;&#65533;&quot;, &quot;&quot;).replaceAll(&quot;[\\x00-\\x09\\x11\\x12\\x14-\\x1F\\x7F]&quot;, &quot;&quot;)]" doc:name="Replace invalid characters (thanks, Windows)"/>
+        <byte-array-to-string-transformer doc:name="Byte Array to String" encoding="UTF-16LE"/>
+<!--         <set-payload value="#[payload//.replace(&quot;&#65533;&quot;, &quot;&quot;).replaceAll(&quot;[\\x00-\\x09\\x11\\x12\\x14-\\x1F\\x7F]&quot;, &quot;&quot;)]" doc:name="Replace invalid characters (thanks, Windows)" encoding="UTF-16LE"/> -->
         <dw:transform-message doc:name="Transform Message">
+            <dw:input-payload doc:sample="sample_data/empty.xml"/>
             <dw:set-payload><![CDATA[%dw 1.0
 %output application/json
 ---
@@ -372,8 +374,8 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
         <amqp:outbound-endpoint queueName="${rabbit.vttcut.requestqueue}" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="AMQP-0-9"/>
     </flow>
     <flow name="cut_vtt_response_handler">
-        <amqp:inbound-endpoint queueName="${rabbit.vttcut.responsequeue}" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Listen for VTTCut Responses"/>
-        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+        <amqp:inbound-endpoint queueName="${rabbit.vttcut.responsequeue}" responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Listen for VTTCut Responses" queueDurable="true"/>
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object" encoding="UTF-16LE"/>
         <choice doc:name="Is the status 'OK'?">
             <when expression="#[payload.response.status.equals(&quot;OK&quot;)]">
                 <logger level="INFO" doc:name="Yes - Status is 'OK'" message="Status is 'OK'"/>
@@ -388,7 +390,7 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
 	data: flowVars.data
 }]]></dw:set-payload>
                 </dw:transform-message>
-                <amqp:outbound-endpoint queueName="${rabbit.xiftovtt.requestqueue}" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="AMQP-0-9"/>
+                <amqp:outbound-endpoint queueName="${rabbit.xiftovtt.requestqueue}" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="AMQP-0-9" queueDurable="true"/>
                 <amqp:acknowledge-message doc:name="AMQP-0-9 Acknowledge Message"/>
             </when>
             <otherwise>
@@ -397,8 +399,8 @@ http://www.mulesoft.org/schema/mule/smtp http://www.mulesoft.org/schema/mule/smt
         </choice>
     </flow>
     <flow name="xif_to_vtt_response_handler">
-        <amqp:inbound-endpoint responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Listen for Xif to VTT Responses" queueName="${rabbit.xiftovtt.responsequeue}"/>
-        <json:json-to-object-transformer doc:name="JSON to Object" returnClass="java.util.HashMap"/>
+        <amqp:inbound-endpoint responseTimeout="10000" exchange-pattern="request-response" connector-ref="AMQP_0_9_Connector" doc:name="Listen for Xif to VTT Responses" queueName="${rabbit.xiftovtt.responsequeue}" queueDurable="true"/>
+        <json:json-to-object-transformer doc:name="JSON to Object" returnClass="java.util.HashMap" encoding="UTF-16LE"/>
         <choice doc:name="Is the status 'OK'?">
             <when expression="#[payload.response.status.equals(&quot;OK&quot;)]">
                 <logger message="Status is 'OK'" level="INFO" doc:name="Yes - Status is 'OK'"/>
