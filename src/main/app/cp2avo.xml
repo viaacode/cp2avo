@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<mule xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:mulerequester="http://www.mulesoft.org/schema/mule/mulerequester" xmlns:ftp="http://www.mulesoft.org/schema/mule/ee/ftp" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:mulexml="http://www.mulesoft.org/schema/mule/xml" xmlns:context="http://www.springframework.org/schema/context" xmlns:amqps="http://www.mulesoft.org/schema/mule/amqps" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:anypoint-mq="http://www.mulesoft.org/schema/mule/anypoint-mq" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+<mule xmlns:ftplite="http://www.mulesoft.org/schema/mule/ftplite" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:mulerequester="http://www.mulesoft.org/schema/mule/mulerequester" xmlns:ftp="http://www.mulesoft.org/schema/mule/ee/ftp" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:mulexml="http://www.mulesoft.org/schema/mule/xml" xmlns:context="http://www.springframework.org/schema/context" xmlns:amqps="http://www.mulesoft.org/schema/mule/amqps" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:anypoint-mq="http://www.mulesoft.org/schema/mule/anypoint-mq" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
 	xmlns:spring="http://www.springframework.org/schema/beans" 
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
@@ -14,7 +14,8 @@ http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee
 http://www.mulesoft.org/schema/mule/ee/ftp http://www.mulesoft.org/schema/mule/ee/ftp/current/mule-ftp-ee.xsd
 http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema/mule/mulerequester/current/mule-mulerequester.xsd
 http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
-http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd"> 
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ftplite http://www.mulesoft.org/schema/mule/ftplite/current/mule-ftplite.xsd"> 
     <context:property-placeholder location="${mule.env}.properties"/>
      <db:generic-config name="Borndigital" url="jdbc:postgresql://${db.host}:${db.port}/${db.database}?password=${db.password}&amp;user=${db.username}" driverClassName="org.postgresql.Driver" doc:name="Borndigital DB">
         <reconnect-forever frequency="15000"/>
@@ -30,6 +31,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
         <reconnect-forever frequency="15000"/>
     </amqp:connector>
     <http:request-config name="Aspect_ratio_API" host="${aspect_ratio_api.host}" port="${aspect_ratio_api.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="120000" connectionIdleTimeout="120000"/>
+    <ftplite:config name="FTPLite_Configuration" doc:name="FTPLite: Configuration"/>
     <flow name="export_mam_avoFlow">
         <amqp:inbound-endpoint
 			queueName="avo_export_request"
@@ -169,7 +171,10 @@ if (matcher.matches()) {
         <logger message="FILES_MOVED" level="INFO" doc:name="FILES_MOVED"/>
     </sub-flow>
     <sub-flow name="get_original_metadata_from_sidecar">
-	    <mulerequester:request resource="#[&quot;ftp://&quot;+flowVars.username+&quot;:&quot;+flowVars.password+&quot;@&quot;+flowVars.host+&quot;/&quot;+flowVars.filepath+&quot;/&quot;+flowVars.filename+&quot;.xml?connector=FTP&quot;]" timeout="10000" throwExceptionOnTimeout="true" doc:name="Read sidecar"/>
+        <until-successful maxRetries="3" millisBetweenRetries="30000" doc:name="Until Successful (3x30s)">
+            <ftplite:get-file-content config-ref="FTPLite_Configuration" fileName="#[flowVars.filename]" filePath="#[flowVars.filepath]" hostName="#[flowVars.host]" password="#[flowVars.password]" userName="#[flowVars.username]" doc:name="FTPLite: get sidecar from FTP"/>
+        </until-successful>
+        <byte-array-to-object-transformer doc:name="Byte Array to Object"/>
         <!--
         <sftplite:get-file filePath="#[flowVars.filepath+&quot;/&quot;+flowVars.filename + &quot;.xml&quot;]" hostName="#[flowVars.host]" password="#[flowVars.password]" userName="#[flowVars.username]" doc:name="SFTPLite"/>
         -->
