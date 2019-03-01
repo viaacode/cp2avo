@@ -32,7 +32,7 @@ http://www.mulesoft.org/schema/mule/ftplite http://www.mulesoft.org/schema/mule/
     </amqp:connector>
     <http:request-config name="Aspect_ratio_API" host="${aspect_ratio_api.host}" port="${aspect_ratio_api.port}" basePath="/" doc:name="HTTP Request Configuration" responseTimeout="120000" connectionIdleTimeout="120000"/>
     <ftplite:config name="FTPLite_Configuration" doc:name="FTPLite: Configuration"/>
-    <flow name="export_mam_avoFlow">
+    <flow name="cp2avoFlow">
         <amqp:inbound-endpoint
 			queueName="avo_export_request"
 			exchange-pattern="request-response"
