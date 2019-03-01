@@ -171,7 +171,7 @@ if (matcher.matches()) {
         <logger message="FILES_MOVED" level="INFO" doc:name="FILES_MOVED"/>
     </sub-flow>
     <sub-flow name="get_original_metadata_from_sidecar">
-        <until-successful maxRetries="3" millisBetweenRetries="30000" doc:name="Until Successful (3x30s)">
+        <until-successful maxRetries="3" millisBetweenRetries="30000" doc:name="Until Successful (3x30s)" synchronous="true">
             <ftplite:get-file-content config-ref="FTPLite_Configuration" fileName="#[flowVars.filename]" filePath="#[flowVars.filepath]" hostName="#[flowVars.host]" password="#[flowVars.password]" userName="#[flowVars.username]" doc:name="FTPLite: get sidecar from FTP"/>
         </until-successful>
         <byte-array-to-object-transformer doc:name="Byte Array to Object"/>
