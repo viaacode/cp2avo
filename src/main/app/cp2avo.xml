@@ -47,7 +47,7 @@ http://www.mulesoft.org/schema/mule/ftplite http://www.mulesoft.org/schema/mule/
         <flow-ref name="check_filename_special_characters" doc:name="check_filename_special_characters"/>
         <choice doc:name="Contains bad characters?">
             <when expression="#[flowVars.filename_contains_bad_characters==false]">
-                <logger message="Doesn't contain bad chars" level="INFO" category="  " doc:name="Doesn't contain bad chars"/>
+                <logger message="File #[flowVars.filename] does not contain bad chars" level="INFO" category="  " doc:name="Log: File x does not contain bad chars"/>
 		<flow-ref name="parse_filename" doc:name="parse_filename"/>
 		<flow-ref name="get_original_metadata_from_sidecar" doc:name="get_original_metadata_from_sidecar"/>
                 <flow-ref name="get_new_pid" doc:name="get_new_pid"/>
@@ -81,27 +81,34 @@ http://www.mulesoft.org/schema/mule/ftplite http://www.mulesoft.org/schema/mule/
     </flow>
     <sub-flow name="init_variables">
         <set-variable variableName="originalfilename" value="#[payload.sip_package[0].file_name]" doc:name="set originalfilename"/>
+        <logger message="#[flowVars.originalfilename]" level="DEBUG" doc:name="Log: originalfilename"/>
         <flow-ref name="parse_filename" doc:name="parse_filename"/>
         <set-variable variableName="filename" value="#[payload.sip_package[0].file_name.substring(0, payload.sip_package[0].file_name.lastIndexOf('.'))]" doc:name="Set filename without extension"/>
+        <logger message="#[flowVars.filename]" level="DEBUG" doc:name="Log: filename"/>
         <set-variable variableName="extension" value="#[payload.sip_package[1].file_name.substring(payload.sip_package[1].file_name.lastIndexOf('.')+1)]" doc:name="Set extension"/>
+        <logger message="#[flowVars.extension]" level="DEBUG" doc:name="Log: extension"/>
         <choice doc:name="Is extension == xml?">
             <when expression="#[!flowVars.extension.equals('xml')]">
-                <logger level="INFO" doc:name="Logger"/>
+                <logger level="DEBUG" doc:name="Log payload"/>
             </when>
             <otherwise>
                 <set-variable variableName="extension" value="#[payload.sip_package[0].file_name.substring(payload.sip_package[0].file_name.lastIndexOf('.')+1)]" doc:name="Set extension"/>
             </otherwise>
         </choice>
         <set-variable variableName="source_filename" value="#[payload.sip_package[0].file_name]" doc:name="Set source_filename"/>
+        <logger message="#[flowVars.source_filename]" level="DEBUG" doc:name="Log: source_filename"/>
         <set-variable variableName="filepath" value="#[payload.sip_package[0].file_path]" doc:name="Set filepath"/>
+        <logger message="#[flowVars.filepath]" level="DEBUG" doc:name="Log: filepath"/>
         <set-variable variableName="host" value="#[payload.server]" doc:name="Set host"/>
+        <logger message="#[flowVars.host]" level="DEBUG" doc:name="Log: host"/>
         <set-variable variableName="username" value="#[payload.username]" doc:name="Set username"/>
+        <logger message="#[flowVars.username]" level="DEBUG" doc:name="Log: username"/>
         <set-variable variableName="password" value="#[payload.password]" doc:name="Set password"/>
         <set-variable variableName="state" value="#[&quot;SIP_DETECTED&quot;]" doc:name="Set state (SIP_DETECTED)"/>
         <until-successful maxRetries="5" synchronous="true" millisBetweenRetries="5000" doc:name="Until Successful">
             <flow-ref name="create_es_message" doc:name="create_es_message"/>
         </until-successful>
-        <logger message="SIP_DETECTED" level="INFO" doc:name="SIP_DETECTED"/>
+        <logger message="SIP_DETECTED: #[flowVars.filename]" level="INFO" doc:name="Log: SIP_DETECTED"/>
     </sub-flow>
     <sub-flow name="parse_filename">
         <set-variable variableName="regex" value="([A-Za-z0-9 -]+)_([0-9]{8})-([0-9]{8})(_partial)?.([A-Za-z0-9]+)" doc:name="Set regex"/>
@@ -171,8 +178,9 @@ if (matcher.matches()) {
         <logger message="FILES_MOVED" level="INFO" doc:name="FILES_MOVED"/>
     </sub-flow>
     <sub-flow name="get_original_metadata_from_sidecar">
-        <until-successful maxRetries="3" millisBetweenRetries="30000" doc:name="Until Successful (3x30s)" synchronous="true">
-            <ftplite:get-file-content config-ref="FTPLite_Configuration" fileName="#[flowVars.filename]" filePath="#[flowVars.filepath]" hostName="#[flowVars.host]" password="#[flowVars.password]" userName="#[flowVars.username]" doc:name="FTPLite: get sidecar from FTP"/>
+        <logger message="FTP vars: fileName=&quot;#[flowVars.filename]&quot;.xml / filePath=&quot;#[flowVars.filepath]&quot; / hostName=&quot;#[flowVars.host]&quot; / userName=&quot;#[flowVars.username]&quot;" level="INFO" doc:name="Log: FTP vars"/>
+        <until-successful maxRetries="2" millisBetweenRetries="15000" doc:name="Until Successful (3x15s)" synchronous="true">
+            <ftplite:get-file-content config-ref="FTPLite_Configuration" fileName="#[flowVars.filename].xml" filePath="#[flowVars.filepath]" hostName="#[flowVars.host]" password="#[flowVars.password]" userName="#[flowVars.username]" doc:name="FTPLite: get sidecar from FTP"/>
         </until-successful>
         <byte-array-to-object-transformer doc:name="Byte Array to Object"/>
         <!--
