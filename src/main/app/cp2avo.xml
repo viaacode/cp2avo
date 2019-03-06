@@ -178,9 +178,9 @@ if (matcher.matches()) {
         <logger message="FILES_MOVED" level="INFO" doc:name="FILES_MOVED"/>
     </sub-flow>
     <sub-flow name="get_original_metadata_from_sidecar">
-        <logger message="FTP vars: fileName=&quot;#[flowVars.filename]&quot; / filePath=&quot;#[flowVars.filepath]&quot; / hostName=&quot;#[flowVars.host]&quot; / userName=&quot;#[flowVars.username]&quot;" level="INFO" doc:name="Log: FTP vars"/>
+        <logger message="FTP vars: fileName=&quot;#[flowVars.filename]&quot;.xml / filePath=&quot;#[flowVars.filepath]&quot; / hostName=&quot;#[flowVars.host]&quot; / userName=&quot;#[flowVars.username]&quot;" level="INFO" doc:name="Log: FTP vars"/>
         <until-successful maxRetries="2" millisBetweenRetries="15000" doc:name="Until Successful (3x15s)" synchronous="true">
-            <ftplite:get-file-content config-ref="FTPLite_Configuration" fileName="#[flowVars.filename]" filePath="#[flowVars.filepath]" hostName="#[flowVars.host]" password="#[flowVars.password]" userName="#[flowVars.username]" doc:name="FTPLite: get sidecar from FTP"/>
+            <ftplite:get-file-content config-ref="FTPLite_Configuration" fileName="#[flowVars.filename].xml" filePath="#[flowVars.filepath]" hostName="#[flowVars.host]" password="#[flowVars.password]" userName="#[flowVars.username]" doc:name="FTPLite: get sidecar from FTP"/>
         </until-successful>
         <byte-array-to-object-transformer doc:name="Byte Array to Object"/>
         <!--
