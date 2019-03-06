@@ -7,7 +7,7 @@
             <SizeBasedTriggeringPolicy size="10 MB" />
             <DefaultRolloverStrategy max="10"/>
         </RollingFile>
-        <Socket name="logstash" host="do-qas-lst-v2.do.viaa.be" port="7000">
+        <Socket name="logstash" host="do-qas-lst-v2.do.viaa.be" port="12345" protocol="UDP">
             <SerializedLayout />
         </Socket>
         <Rewrite name="rewrite">
