@@ -7,15 +7,6 @@
             <SizeBasedTriggeringPolicy size="10 MB" />
             <DefaultRolloverStrategy max="10"/>
         </RollingFile>
-        <Socket name="logstash" host="do-qas-lst-v2.do.viaa.be" port="12345" protocol="UDP">
-            <SerializedLayout />
-        </Socket>
-        <Rewrite name="rewrite">
-    <AppenderRef ref="logstash"/>
-    <PropertiesRewritePolicy>
-        <Property name="application">AVO_IMPORT_EXPORT</Property>
-    </PropertiesRewritePolicy>
-</Rewrite>
     </Appenders>
     <Loggers>
         <!-- CXF is used heavily by Mule for web services -->
@@ -37,8 +28,6 @@
         
         <AsyncRoot level="INFO">
             <AppenderRef ref="file" />
-           	<AppenderRef ref="logstash" />
-            <AppenderRef ref="rewrite" />
         </AsyncRoot>
     </Loggers>
 </Configuration>
