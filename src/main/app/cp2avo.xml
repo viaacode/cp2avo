@@ -223,6 +223,15 @@ if (matcher.matches()) {
         <set-variable variableName="original_ingestspacename" value="#[xpath3('//ingestspacename/text()')]" doc:name="Set original_ingestspacename"/>
         <set-variable variableName="original_department" value="#[xpath3('//Department/text()')]" doc:name="Set original_department"/>
         <set-variable variableName="original_isiningestspace" value="#[xpath3('//isiningestspace/text()')]" doc:name="Set original_isiningestspace"/>
+		<set-variable variableName="archive_date_string" value="#[xpath3('//ArchiveDate/text()')]" doc:name="set archive_date_string"/>
+		<dw:transform-message doc:name="transform archive_date_string to a datetime object">
+			<dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+{
+	archive_date: flowVars.archive_date_string as :datetime {format: "yyyy:MM:dd HH:mm:ss"}
+}]]></dw:set-payload>
+		</dw:transform-message>
         <set-variable variableName="bestandsnaam" value="#[xpath3('//bestandsnaam/text()')]" doc:name="Set original_bestandsnaam"/>
         <set-variable variableName="original_dc_source" value="#[xpath3('//dc_source/text()')]" doc:name="Set original_dc_source"/>
         <set-variable variableName="briefing_ids" value="#[xpath3(&quot;/string-join(//BriefingID[not(@type='list')]/text(), ' ')&quot;)]" doc:name="Set briefing_ids as text field for logging"/>
@@ -302,8 +311,8 @@ if (matcher.matches()) {
     </sub-flow>
     <sub-flow name="check_aspect_ratio">
         <set-variable variableName="comesFromTestbeeld" value="#[xpath3('//Original_CP', flowVars.original_metadata) != &quot;&quot;]" doc:name="Set comesFromTestbeeld"/>
-        <choice doc:name="No check when audio or comes again from testbeeld">
-            <when expression="#[flowVars.is_audio.equals(true) || extension.equals('WAV') || flowVars.extension.equals('wav') || flowVars.comesFromTestbeeld.equals(true)]">
+        <choice doc:name="No check when audio or comes again from testbeeld or archivedate is after 01/01/2021">
+            <when expression="#[flowVars.is_audio.equals(true) || extension.equals('WAV') || flowVars.extension.equals('wav') || flowVars.comesFromTestbeeld.equals(true)] || flowVars.archive_date.year &gt; 2020">
                 <set-variable variableName="is_aspect_ratio_correct" value="#[true]" doc:name="Set is_aspect_ratio_correct TRUE"/>
                 <set-variable variableName="profile" value="avo" doc:name="Set profile to avo (otherwise mule gives null pointer later)"/>
             </when>
