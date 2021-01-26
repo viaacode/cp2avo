@@ -223,7 +223,7 @@ if (matcher.matches()) {
         <set-variable variableName="original_ingestspacename" value="#[xpath3('//ingestspacename/text()')]" doc:name="Set original_ingestspacename"/>
         <set-variable variableName="original_department" value="#[xpath3('//Department/text()')]" doc:name="Set original_department"/>
         <set-variable variableName="original_isiningestspace" value="#[xpath3('//isiningestspace/text()')]" doc:name="Set original_isiningestspace"/>
-		<set-variable variableName="archive_date_string" value="#[xpath3('//ArchiveDate/text()')]" doc:name="set archive_date_string"/>
+		<set-variable variableName="archive_date_string" value="#[xpath3('//CreationDate/text()')]" doc:name="set archive_date_string"/>
 		<dw:transform-message doc:name="transform archive_date_string to a datetime object">
 			<dw:set-payload><![CDATA[%dw 1.0
 %output application/java
